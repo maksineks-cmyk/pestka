@@ -1,7 +1,7 @@
 // Pojedyncze zadanie na liście: pole wyboru, tytuł, ikonki (dzwonek, powtarzanie) i uchwyt do przeciągania.
 import { useState } from 'react';
 import type { Task } from '../lib/types';
-import { IconBell, IconCheck, IconGrip, IconRepeat } from './Icons';
+import { IconBell, IconCheck, IconClock, IconGrip, IconRepeat } from './Icons';
 import type { HandleProps } from './SortableList';
 import { XP_PER_TASK } from '../lib/stats';
 
@@ -13,6 +13,7 @@ export function TaskItem({
   onToggle,
   onEdit,
   onBell,
+  onTime,
   big,
 }: {
   task: Task;
@@ -24,6 +25,8 @@ export function TaskItem({
   onEdit: (t: Task) => void;
   /** Jedno stuknięcie = przypomnienie .ics (tylko zadania z konkretną godziną). */
   onBell?: (t: Task) => void;
+  /** Szybkie ustawienie godziny (zegar przy zadaniach bez godziny). */
+  onTime?: (t: Task) => void;
   /** Duży wiersz (oś czasu „Plan dnia”). */
   big?: boolean;
 }) {
@@ -55,6 +58,11 @@ export function TaskItem({
           </span>
         )}
       </button>
+      {onTime && !task.time && !task.done && (
+        <button className="task-clock" onClick={() => onTime(task)} aria-label="Ustaw godzinę">
+          <IconClock size={19} />
+        </button>
+      )}
       {onBell && task.time && !task.timeApprox && !task.done && (
         <button
           className={`task-bell ${task.reminder ? 'is-set' : ''}`}

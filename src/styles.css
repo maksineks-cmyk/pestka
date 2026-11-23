@@ -878,6 +878,166 @@ h1 {
   padding: 4px 0;
 }
 
+/* --- Przeciąganie między sekcjami --------------------------------------------- */
+.task {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.sortable-row.is-placeholder {
+  opacity: 0.3;
+}
+.drag-overlay {
+  cursor: grabbing;
+}
+.drag-overlay .task {
+  animation: none;
+}
+.timeline .sortable-row {
+  margin-bottom: 0;
+}
+.section.is-drop-target {
+  border-radius: 18px;
+  outline: 2px dashed transparent;
+  outline-offset: 4px;
+  transition: outline-color 0.15s, background 0.15s;
+}
+.section.is-drop-target.is-over {
+  outline-color: var(--sec);
+  background: color-mix(in srgb, var(--sec) 8%, transparent);
+}
+.drop-hint {
+  border: 2px dashed color-mix(in srgb, var(--sec) 50%, var(--border));
+  border-radius: 16px;
+  padding: 12px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+.tl-time {
+  border-radius: 10px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.tl-time:active {
+  background: var(--bg-soft);
+}
+.task-clock {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--border-dark);
+  flex-shrink: 0;
+}
+.task-clock:active {
+  transform: scale(0.9);
+  color: var(--sec);
+}
+
+/* --- Szybki wybór godziny ------------------------------------------------------ */
+.tp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tp-quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.tp-quick-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 2px solid var(--border);
+  border-bottom-width: 4px;
+  font-weight: 800;
+  font-size: 15px;
+  text-align: left;
+}
+.tp-quick-btn b {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--blue);
+}
+.tp-quick-btn:active,
+.tp-hour:active,
+.tp-min:active {
+  transform: translateY(2px);
+}
+.tp-quick-btn.is-on {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+.tp-label-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.tp-night {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--blue);
+  padding: 4px 6px;
+}
+.tp-hours {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.tp-hour,
+.tp-min {
+  height: 48px;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  border-bottom-width: 4px;
+  font-weight: 900;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+.tp-mins {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.tp-min {
+  font-size: 17px;
+}
+.tp-hour.is-on,
+.tp-min.is-on {
+  background: var(--green);
+  border-color: var(--green-dark);
+  color: #fff;
+}
+.tp-exact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-soft);
+}
+.tp-exact span {
+  flex-shrink: 0;
+}
+.time-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  color: var(--text-soft);
+}
+.time-btn.is-set {
+  color: var(--text);
+  border-color: var(--blue);
+}
+
 /* --- Zadanie ------------------------------------------------------------- */
 .sortable-row {
   margin-bottom: 8px;

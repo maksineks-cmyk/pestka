@@ -43,6 +43,13 @@ describe('classify — odmiana', () => {
     ['joga', 'z'],
     ['fryzjer', 'z'],
     ['basen', 'z'],
+    // Pisane bez polskich znaków (z prawdziwego użycia):
+    ['Kupic pyzy', 'd'],
+    ['Zrobic 5 razy deske po 30 sekund', 'z'],
+    ['30 pompek', 'z'],
+    ['Wykapac sie i uzyc kremu', 'z'],
+    ['Zrobic sobie obiad', 'd'],
+    ['spakowac sie i przyszykowac ciuchy', 'd'],
   ])('„%s” → %s', (text, expected) => {
     expect(sec(text)).toBe(expected);
   });

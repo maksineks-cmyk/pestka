@@ -11,6 +11,8 @@ Bez konta, bez logowania i bez serwera — wszystkie dane zostają na Twoim tele
   - **#dom odkurzyć** albo **odkurzyć #dom** — wymusza sekcję.
   - Pestka **uczy się**: gdy ręcznie przeniesiesz zadanie do innej sekcji, zapamięta jego słowa. Własne słowa kluczowe ustawisz w **Ustawienia → sekcja**.
 - **Plan dnia** — oś czasu zadań z godziną z czerwoną linią „teraz”; przypomnienie `.ics` jednym stuknięciem w dzwonek.
+- **Przeciąganie kafelków**: przytrzymaj zadanie i przesuń je do innej sekcji (Pestka zapamięta to na przyszłość) albo na „Plan dnia”, aby nadać mu godzinę.
+- **Szybka godzina**: stuknij zegar przy zadaniu (albo godzinę na osi czasu) → „Rano / Południe / Po południu / Wieczorem” jednym stuknięciem lub siatka godzin i minut.
 - **Kalendarz** miesięczny z pierścieniem postępu przy każdym dniu (przesuń palcem w lewo/prawo, aby zmienić miesiąc).
 - **Lista zadań na dzień** podzielona na **sekcje** (Praca, Dom, Zdrowie, Inne… — możesz je dodawać, zmieniać, usuwać, przestawiać, nadawać kolor i emoji).
 - Odhaczanie zadań z animacją, **+10 XP** za każde zadanie i **konfetti**, gdy skończysz cały dzień (+50 XP bonusu).

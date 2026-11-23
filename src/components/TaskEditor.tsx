@@ -10,6 +10,9 @@ import { ask, toast } from './Dialogs';
 import { IconBell, IconTrash } from './Icons';
 import { useLearned } from '../hooks';
 import { classify, fallbackSectionId } from '../lib/classifier';
+import { extractTime } from '../lib/parser';
+import { TimePicker } from './TimePicker';
+import { IconClock } from './Icons';
 
 export interface EditorTarget {
   task?: Task; // brak = nowe zadanie
@@ -46,6 +49,7 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
   const [timeApprox, setTimeApprox] = useState(false);
   // Czy użytkownik sam wybrał sekcję? Jeśli nie (nowe zadanie), dobieramy ją z nazwy.
   const [sectionTouched, setSectionTouched] = useState(true);
+  const [pickTime, setPickTime] = useState(false);
   const learnedRows = useLearned();
   const learned = useMemo(() => Object.fromEntries(learnedRows.map((r) => [r.word, r.sectionId])), [learnedRows]);
 
@@ -85,7 +89,23 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
   const recurrence: Recurrence | undefined =
     repeat === 'none' ? undefined : repeat === 'weekdays' ? { type: 'weekdays', weekdays: [...weekdays].sort() } : { type: repeat };
 
-  const buildInput = (): TaskInput => ({
+  const buildInput = (): TaskInput => {
+    // Nowe zadanie bez ustawionej godziny: „fryzjer o 15” w nazwie też ustawi godzinę.
+    const auto = !task && !time ? extractTime(title.trim()) : null;
+    if (auto?.time) {
+      return {
+        title: auto.title,
+        note: note.trim() || undefined,
+        date,
+        sectionId,
+        reminder: hasReminder ? { date: recurrence ? date : remDate, time: remTime, alert } : undefined,
+        recurrence,
+        time: auto.time,
+        endTime: auto.endTime,
+        timeApprox: auto.approx,
+      };
+    }
+    return {
     title: title.trim(),
     note: note.trim() || undefined,
     date,
@@ -96,7 +116,8 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
     time: time || undefined,
     endTime: time && endTime > time ? endTime : undefined,
     timeApprox: time ? timeApprox : undefined,
-  });
+  };
+  };
 
   const save = async () => {
     if (!title.trim()) {
@@ -148,6 +169,7 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
   const toggleWeekday = (i: number) => setWeekdays((w) => (w.includes(i) ? w.filter((x) => x !== i) : [...w, i]));
 
   return (
+    <>
     <Sheet open={!!target} onClose={onClose} title={task ? 'Edytuj zadanie' : 'Nowe zadanie'}>
       <form
         className="form"
@@ -180,11 +202,9 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
 
         <label className="field-label">Godzina w planie dnia</label>
         <div className="row2 time-row">
-          <input className="input" type="time" value={time} aria-label="Godzina" onChange={(e) => {
-              setTime(e.target.value);
-              setTimeApprox(false);
-              if (e.target.value && !hasReminder) setRemTime(e.target.value);
-            }} />
+          <button type="button" className={`input time-btn ${time ? 'is-set' : ''}`} onClick={() => setPickTime(true)}>
+            <IconClock size={18} /> {time ? `${timeApprox ? '~' : ''}${time}` : 'Ustaw godzinę'}
+          </button>
           {time && <input className="input" type="time" value={endTime} aria-label="Do godziny (opcjonalnie)" onChange={(e) => setEndTime(e.target.value)} />}
           {time && (
             <button type="button" className="btn btn-small btn-secondary" onClick={() => { setTime(''); setEndTime(''); setTimeApprox(false); }}>
@@ -192,7 +212,7 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
             </button>
           )}
         </div>
-        {!time && <p className="hint">Bez godziny zadanie trafi do swojej sekcji. Z godziną — na oś „Plan dnia”.</p>}
+        {!time && <p className="hint">Bez godziny zadanie trafi do swojej sekcji. Z godziną — na oś „Plan dnia”. Możesz też wpisać godzinę w nazwie, np. „fryzjer o 15”.</p>}
         {time && <p className="hint">{timeApprox ? 'Godzina przybliżona. ' : ''}Drugie pole to (opcjonalny) koniec, np. 15:00–16:30.</p>}
 
         <label className="field-label">Powtarzaj</label>
@@ -253,5 +273,17 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
         )}
       </form>
     </Sheet>
+    <TimePicker
+      open={pickTime}
+      value={time || undefined}
+      onPick={(v) => {
+        setTime(v ?? '');
+        if (!v) setEndTime('');
+        setTimeApprox(false);
+        if (v && !hasReminder) setRemTime(v);
+      }}
+      onClose={() => setPickTime(false)}
+    />
+    </>
   );
 }

@@ -3,12 +3,12 @@
 // oraz „Przenieś niezrobione na jutro”.
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, ensureSeriesForRange, getLearnedMap, moveUnfinishedToTomorrow, reorderTasks, setTaskReminder, toggleTask } from '../db';
+import { db, ensureSeriesForRange, getLearnedMap, moveUnfinishedToTomorrow, setTaskReminder, setTaskTime, toggleTask } from '../db';
 import { addDays, formatLong, friendlyDay } from '../lib/dates';
 import type { Section, Task } from '../lib/types';
 import { useNowMinutes, useSwipe } from '../hooks';
-import { SortableList } from '../components/SortableList';
-import { TaskItem } from '../components/TaskItem';
+import { DayBoard } from '../components/DayBoard';
+import { TimePicker } from '../components/TimePicker';
 import { TaskEditor, type EditorTarget } from '../components/TaskEditor';
 import { PlanPreview } from '../components/PlanPreview';
 import { Mascot, moodFor } from '../components/Mascot';
@@ -32,12 +32,6 @@ const EMPTY: Task[] = [];
 /** Ile ms świeżo odhaczone zadanie zostaje na swoim miejscu, zanim zjedzie na dół grupy. */
 const SINK_DELAY = 900;
 const COLLAPSED_KEY = 'pestka-collapsed-sections';
-
-const toMin = (t: string) => {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-};
-const fmtMin = (n: number) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 
 function readCollapsed(): string[] {
   try {
@@ -63,6 +57,7 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
   const [preview, setPreview] = useState<ParsedTask[] | null>(null);
   const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
   const [, setTick] = useState(0);
+  const [timeFor, setTimeFor] = useState<Task | null>(null);
   const nowMin = useNowMinutes();
 
   useEffect(() => {
@@ -130,31 +125,6 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
     }
   };
 
-  // Zrobione zadania zjeżdżają na dół (z małym opóźnieniem, żeby było widać odhaczenie).
-  const now = Date.now();
-  const sunk = (t: Task) => (t.done && now - (t.doneAt ?? 0) > SINK_DELAY ? 1 : 0);
-
-  const sectionById = new Map(sections.map((s) => [s.id, s]));
-  const sectionOf = (t: Task) => sectionById.get(t.sectionId) ?? sections[0];
-
-  // „Plan dnia”: zadania z godziną, chronologicznie.
-  const timed = tasks.filter((t) => t.time).sort((a, b) => a.time!.localeCompare(b.time!) || a.order - b.order);
-  const timedDone = timed.filter((t) => t.done).length;
-  const isToday = date === today;
-  const nowIndex = isToday ? timed.findIndex((t) => toMin(t.time!) > nowMin) : -1;
-  const nowAt = nowIndex === -1 ? timed.length : nowIndex;
-
-  // Zadania bez godziny w sekcjach. Zadania z nieistniejącej sekcji (np. po imporcie) trafiają do pierwszej.
-  const untimed = tasks.filter((t) => !t.time);
-  const tasksIn = (s: Section) =>
-    untimed.filter((t) => sectionOf(t)?.id === s.id).sort((a, b) => sunk(a) - sunk(b) || a.order - b.order);
-
-  const nowLine = (
-    <div className="tl-now" key="now" aria-label={`Teraz ${fmtMin(nowMin)}`}>
-      <span className="tl-now-label">teraz {fmtMin(nowMin)}</span>
-    </div>
-  );
-
   return (
     <div className="screen day-screen">
       <header className="day-header">
@@ -218,67 +188,20 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
           </div>
         )}
 
-        {timed.length > 0 && (
-          <section className="section plan" style={{ ['--sec' as string]: 'var(--blue)' }}>
-            <div className="section-head">
-              <span className="section-emoji">🗓️</span>
-              <h2>Plan dnia</h2>
-              <span className="section-count">{timedDone}/{timed.length}</span>
-            </div>
-            <div className="timeline">
-              {timed.map((t, i) => {
-                const s = sectionOf(t);
-                return [
-                  isToday && i === nowAt ? nowLine : null,
-                  <div key={t.id} className={`tl-row ${t.done ? 'is-done' : ''} ${isToday && toMin(t.time!) <= nowMin && !t.done ? 'is-past' : ''}`} style={{ ['--sec' as string]: s?.color }}>
-                    <div className="tl-time">
-                      <b>{t.timeApprox ? '~' : ''}{t.time}</b>
-                      {t.endTime && <small>{t.endTime}</small>}
-                    </div>
-                    <div className="tl-dot" aria-hidden="true">{s?.emoji}</div>
-                    <div className="tl-task">
-                      <TaskItem task={t} color={s?.color ?? '#ce82ff'} big onToggle={onToggle} onEdit={(task) => setEditor({ task, date, sectionId: task.sectionId })} onBell={onBell} />
-                    </div>
-                  </div>,
-                ];
-              })}
-              {isToday && nowAt === timed.length && nowLine}
-            </div>
-          </section>
-        )}
-
-        {sections.map((s) => {
-          const list = tasksIn(s);
-          if (!list.length) return null; // puste sekcje ukrywamy
-          const isCollapsed = collapsed.includes(s.id);
-          const doneCount = list.filter((t) => t.done).length;
-          return (
-            <section key={s.id} className={`section ${isCollapsed ? 'is-collapsed' : ''}`} style={{ ['--sec' as string]: s.color }}>
-              <div className="section-head">
-                <button className="section-toggle" onClick={() => toggleCollapsed(s.id)} aria-expanded={!isCollapsed}>
-                  <span className="section-emoji">{s.emoji}</span>
-                  <h2>{s.name}</h2>
-                  <span className="section-count">{doneCount}/{list.length}</span>
-                </button>
-                <button className="section-add" onClick={() => setEditor({ date, sectionId: s.id })} aria-label={`Dodaj zadanie do sekcji ${s.name}`}>
-                  <IconPlus size={16} />
-                </button>
-                <button className="section-chevron" onClick={() => toggleCollapsed(s.id)} aria-label={isCollapsed ? `Rozwiń sekcję ${s.name}` : `Zwiń sekcję ${s.name}`}>
-                  <IconRight size={20} />
-                </button>
-              </div>
-              {!isCollapsed && (
-                <SortableList
-                  items={list}
-                  onReorder={reorderTasks}
-                  render={(t, handle, dragging) => (
-                    <TaskItem task={t} color={s.color} handle={handle} dragging={dragging} onToggle={onToggle} onEdit={(task) => setEditor({ task, date, sectionId: task.sectionId })} />
-                  )}
-                />
-              )}
-            </section>
-          );
-        })}
+        <DayBoard
+          tasks={tasks}
+          sections={sections}
+          isToday={date === today}
+          nowMin={nowMin}
+          collapsed={collapsed}
+          sinkDelay={SINK_DELAY}
+          onToggleCollapsed={toggleCollapsed}
+          onToggle={onToggle}
+          onEdit={(task) => setEditor({ task, date, sectionId: task.sectionId })}
+          onBell={onBell}
+          onTime={setTimeFor}
+          onAdd={(sectionId) => setEditor({ date, sectionId })}
+        />
 
         {total - done > 0 && (
           <button className="btn btn-secondary btn-block move-btn" onClick={moveUndone}>
@@ -291,6 +214,17 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
         <IconPlus size={30} />
       </button>
 
+      <TimePicker
+        open={!!timeFor}
+        value={timeFor?.time}
+        title={timeFor ? `O której: ${timeFor.title}?` : undefined}
+        onPick={async (time) => {
+          if (!timeFor) return;
+          await setTaskTime(timeFor.id, time);
+          toast(time ? `🕒 ${time} — dodano do planu dnia` : 'Usunięto godzinę');
+        }}
+        onClose={() => setTimeFor(null)}
+      />
       <TaskEditor target={editor} sections={sections} onClose={() => setEditor(null)} />
       <PlanPreview
         items={preview}

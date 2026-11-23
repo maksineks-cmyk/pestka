@@ -230,7 +230,7 @@ export function SettingsScreen({ sections }: { sections: Section[] }) {
         <button className="btn btn-danger btn-block" onClick={doReset}>Usuń wszystkie dane</button>
       </div>
 
-      <p className="footer-note">Pestka · planer dnia · v1.1<br />Działa offline, bez konta i bez serwera. 🌱</p>
+      <p className="footer-note">Pestka · planer dnia · v1.2<br />Działa offline, bez konta i bez serwera. 🌱</p>
 
       <SectionEditor draft={draft} sections={sections} onClose={() => setDraft(null)} />
     </div>

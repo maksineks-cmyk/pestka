@@ -30,13 +30,16 @@ export const BUILTIN_KEYWORDS: Record<BuiltinSectionKey, string[]> = {
     'pies', 'psem', 'psa', 'kot', 'kuwet', 'kwiat', 'podlać', 'podlewa', 'mleko', 'chleb', 'pieczyw',
     'paczk', 'paczkomat', 'poczt', 'pościel', 'ogród', 'ogrod', 'garaż', 'samochód', 'przegląd auta', 'mechanik', 'tankowa',
     'prąd', 'za gaz', 'internet', 'opony', 'opon',
+    'kupić', 'kupic', 'kup', 'pyzy', 'zakupić', 'ciuch', 'ubrani', 'spakow', 'pakowa', 'walizk', 'posiłek',
+    'jedzeni', 'lodówk', 'lodowk',
   ],
   zdrowie: [
     'siłowni', 'silowni', 'trening', 'bieg', 'pobiegać', 'spacer', 'lekarz', 'dentyst', 'aptek',
     'leki', 'leków', 'lekarstw', 'tabletk', 'witamin', 'jog', 'rower', 'basen', 'pływa', 'fryzjer',
     'kosmetyczk', 'manicure', 'masaż', 'fizjo', 'rehabilit', 'badani', 'krew', 'szczepieni', 'wizyta u',
     'ćwicz', 'ćwiczeni', 'stretching', 'rozciąg', 'medytacj', 'fitness', 'crossfit', 'tenis', 'squash',
-    'dieta', 'drzemk', 'psycholog', 'terapi', 'okulist', 'ginekolog', 'przychodni',
+    'pomp', 'desk', 'plank', 'przysiad', 'brzuszk', 'kąpiel', 'kąpać', 'wykąp', 'prysznic', 'krem',
+    'zęby', 'zeby', 'nawodni', 'wyspać', 'wyspac', 'spać', 'dieta', 'drzemk', 'psycholog', 'terapi', 'okulist', 'ginekolog', 'przychodni',
   ],
   inne: [],
 };

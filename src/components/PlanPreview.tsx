@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { Section } from '../lib/types';
 import type { ParsedTask } from '../lib/parser';
 import { Sheet } from './Sheet';
+import { TimePicker } from './TimePicker';
 import { addTasks, learnSection } from '../db';
 import { downloadIcs } from '../lib/ics';
 import { toast } from './Dialogs';
@@ -36,6 +37,8 @@ export function PlanPreview({
 }) {
   const [list, setList] = useState<Draft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [timeKey, setTimeKey] = useState<string | null>(null);
+  const timeDraft = list.find((d) => d.key === timeKey);
 
   useEffect(() => {
     if (!items) return;
@@ -80,6 +83,7 @@ export function PlanPreview({
   };
 
   return (
+    <>
     <Sheet open={!!items} onClose={onClose} title="Twój plan dnia">
       <div className="pv">
         <p className="hint">Stuknij emoji, aby zmienić sekcję. Nazwę i godzinę możesz poprawić od razu.</p>
@@ -107,15 +111,9 @@ export function PlanPreview({
                   />
                   <div className="pv-meta">
                     <span className="pv-sec-name">{s?.name}</span>
-                    <label className={`pv-time ${d.time ? 'is-set' : ''}`}>
-                      <span>🕒 {d.time ? `${d.approx ? '~' : ''}${d.time}${d.endTime ? `–${d.endTime}` : ''}` : 'godzina'}</span>
-                      <input
-                        type="time"
-                        value={d.time ?? ''}
-                        onChange={(e) => patch(d.key, { time: e.target.value || undefined, endTime: undefined, approx: undefined, reminder: false })}
-                        aria-label="Godzina"
-                      />
-                    </label>
+                    <button type="button" className={`pv-time ${d.time ? 'is-set' : ''}`} onClick={() => setTimeKey(d.key)} aria-label="Ustaw godzinę">
+                      🕒 {d.time ? `${d.approx ? '~' : ''}${d.time}${d.endTime ? `–${d.endTime}` : ''}` : 'godzina'}
+                    </button>
                     {d.time && (
                       <button type="button" className="pv-clear" onClick={() => patch(d.key, { time: undefined, endTime: undefined, approx: undefined, reminder: false })} aria-label="Usuń godzinę">
                         ×
@@ -157,5 +155,13 @@ export function PlanPreview({
         <button type="button" className="btn btn-ghost btn-block" onClick={onClose}>Wróć do edycji</button>
       </div>
     </Sheet>
+    <TimePicker
+      open={!!timeDraft}
+      value={timeDraft?.time}
+      title={timeDraft ? `O której: ${timeDraft.title}?` : undefined}
+      onPick={(time) => timeDraft && patch(timeDraft.key, { time, endTime: undefined, approx: undefined, reminder: false })}
+      onClose={() => setTimeKey(null)}
+    />
+    </>
   );
 }

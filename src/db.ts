@@ -146,6 +146,31 @@ export async function setTaskReminder(id: string, reminder: Reminder | undefined
   await db.tasks.update(id, { reminder });
 }
 
+/** Ustawia (lub usuwa) godzinę zadania w planie dnia. */
+export async function setTaskTime(id: string, time: string | undefined) {
+  const t = await db.tasks.get(id);
+  if (!t) return;
+  await db.tasks.update(id, {
+    time,
+    endTime: time && t.endTime && t.endTime > time ? t.endTime : undefined,
+    timeApprox: undefined,
+  });
+}
+
+/**
+ * Przenosi zadanie (przeciągnięte) do innej sekcji. `orderedIds` = nowa kolejność zadań
+ * w sekcji docelowej (z przeniesionym zadaniem). Klasyfikator uczy się z przeniesienia.
+ */
+export async function moveTaskToSection(id: string, sectionId: string, orderedIds?: string[]) {
+  const t = await db.tasks.get(id);
+  if (!t || t.sectionId === sectionId) return;
+  await learnSection(t.title, sectionId);
+  await db.transaction('rw', db.tasks, async () => {
+    await db.tasks.update(id, { sectionId, order: await nextOrder(t.date, sectionId) });
+    if (orderedIds) await Promise.all(orderedIds.map((tid, i) => db.tasks.update(tid, { order: i })));
+  });
+}
+
 /** Kończy serię przed podanym dniem i usuwa jej przyszłe, niezrobione wystąpienia. */
 async function endSeriesBefore(seriesId: string, date: string, keepTaskId?: string) {
   const s = await db.series.get(seriesId);
