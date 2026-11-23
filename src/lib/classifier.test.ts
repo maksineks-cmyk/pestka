@@ -5,6 +5,7 @@ const SECTIONS: ClassifierSection[] = [
   { id: 'p', name: 'Praca', builtin: 'praca' },
   { id: 'd', name: 'Dom', builtin: 'dom' },
   { id: 'z', name: 'Zdrowie', builtin: 'zdrowie' },
+  { id: 'k', name: 'Na komputerze', builtin: 'komputer' },
   { id: 'i', name: 'Inne', builtin: 'inne' },
 ];
 const sec = (text: string, sections = SECTIONS, learned = {}) => classify(text, sections, learned).sectionId;
@@ -50,6 +51,14 @@ describe('classify — odmiana', () => {
     ['Wykapac sie i uzyc kremu', 'z'],
     ['Zrobic sobie obiad', 'd'],
     ['spakowac sie i przyszykowac ciuchy', 'd'],
+    // Na komputerze
+    ['Pograc w gta', 'k'],
+    ['pograć w fifę', 'k'],
+    ['zagrać w minecrafta', 'k'],
+    ['porobić beaty', 'k'],
+    ['zrobić bit w FL Studio', 'k'],
+    ['nagrać wokal', 'k'],
+    ['zmontować filmik na YouTube', 'k'],
   ])('„%s” → %s', (text, expected) => {
     expect(sec(text)).toBe(expected);
   });

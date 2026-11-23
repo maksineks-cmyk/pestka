@@ -12,7 +12,7 @@
 //   dzięki czemu zmiana nazwy sekcji w Ustawieniach nie psuje rozpoznawania.
 // =============================================================================
 
-export type BuiltinSectionKey = 'praca' | 'dom' | 'zdrowie' | 'inne';
+export type BuiltinSectionKey = 'praca' | 'dom' | 'zdrowie' | 'komputer' | 'inne';
 
 export const BUILTIN_KEYWORDS: Record<BuiltinSectionKey, string[]> = {
   praca: [
@@ -41,6 +41,21 @@ export const BUILTIN_KEYWORDS: Record<BuiltinSectionKey, string[]> = {
     'pomp', 'desk', 'plank', 'przysiad', 'brzuszk', 'kąpiel', 'kąpać', 'wykąp', 'prysznic', 'krem',
     'zęby', 'zeby', 'nawodni', 'wyspać', 'wyspac', 'spać', 'dieta', 'drzemk', 'psycholog', 'terapi', 'okulist', 'ginekolog', 'przychodni',
   ],
+  komputer: [
+    // Gry
+    'pograć', 'pogram', 'zagrać', 'grać', 'granie', 'gra w', 'gry', 'gier', 'grze', 'gta', 'fortnite',
+    'minecraft', 'lol', 'league', 'valorant', 'counter', 'cs2', 'csgo', 'fifa', 'fc 25', 'fc 26', 'roblox',
+    'warzone', 'apex', 'sims', 'wiedźmin', 'cyberpunk', 'steam', 'playstation', 'ps4', 'ps5', 'xbox',
+    'konsol', 'nintendo', 'switch', 'rank', 'ranked',
+    // Muzyka i beaty
+    'beat', 'bit', 'bity', 'bitów', 'muzyk', 'nagra', 'nagrywa', 'miks', 'mix', 'master', 'ableton',
+    'fl studio', 'flstudio', 'logic', 'sampl', 'melodi', 'produkcj', 'instrumental', 'wokal',
+    'tekst do', 'track', 'trak', 'spotify', 'soundcloud',
+    // Komputer, montaż, internet
+    'komputer', 'kompie', 'kompa', 'pc', 'laptop', 'program', 'kodowa', 'montaż', 'montow', 'edytowa',
+    'edycj', 'photoshop', 'blender', 'canva', 'youtube', 'yt', 'film na', 'twitch', 'stream',
+    'discord', 'tiktok', 'rolk', 'insta', 'netflix', 'serial', 'aktualizacj', 'windows', 'zainstalowa',
+  ],
   inne: [],
 };
 
@@ -49,6 +64,8 @@ export const BUILTIN_BY_NAME: Record<string, BuiltinSectionKey> = {
   praca: 'praca',
   dom: 'dom',
   zdrowie: 'zdrowie',
+  komputer: 'komputer',
+  'na komputerze': 'komputer',
   inne: 'inne',
 };
 

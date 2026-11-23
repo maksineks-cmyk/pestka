@@ -3,7 +3,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { BackupFile, LearnedWord, Recurrence, Reminder, Section, Series, Task } from './lib/types';
 import { BUILTIN_BY_NAME } from './lib/keywords';
-import { learnableStems, normalize, type LearnedMap } from './lib/classifier';
+import { classify, learnableStems, normalize, type LearnedMap } from './lib/classifier';
 import { addDays, rangeKeys } from './lib/dates';
 import { occursOn } from './lib/recurrence';
 
@@ -15,11 +15,22 @@ export const uid = () =>
 /** Paleta kolorów do wyboru dla sekcji. */
 export const SECTION_COLORS = ['#58cc02', '#1cb0f6', '#ff9600', '#ff4b4b', '#ce82ff', '#ffc800', '#00cd9c', '#ff86d0', '#8e6cef', '#a0785a'];
 
+const komputerSection = (order: number): Section => ({
+  id: uid(),
+  name: 'Na komputerze',
+  emoji: '💻',
+  color: '#8e6cef',
+  order,
+  builtin: 'komputer',
+  keywords: [],
+});
+
 const defaultSections = (): Section[] => [
   { id: uid(), name: 'Praca', emoji: '💼', color: '#1cb0f6', order: 0, builtin: 'praca', keywords: [] },
   { id: uid(), name: 'Dom', emoji: '🏠', color: '#ff9600', order: 1, builtin: 'dom', keywords: [] },
   { id: uid(), name: 'Zdrowie', emoji: '💪', color: '#ff4b4b', order: 2, builtin: 'zdrowie', keywords: [] },
-  { id: uid(), name: 'Inne', emoji: '✨', color: '#ce82ff', order: 3, builtin: 'inne', keywords: [] },
+  komputerSection(3),
+  { id: uid(), name: 'Inne', emoji: '✨', color: '#ce82ff', order: 4, builtin: 'inne', keywords: [] },
 ];
 
 class PlannerDB extends Dexie {
@@ -53,6 +64,37 @@ class PlannerDB extends Dexie {
             if (key) s.builtin = key;
           }
         });
+      });
+    // Wersja 3: nowa wbudowana sekcja „💻 Na komputerze” (gry, beaty, montaż…).
+    // Dodajemy ją przed „Inne” i przenosimy do niej pasujące, niezrobione zadania z „Inne”.
+    this.version(3)
+      .stores({
+        tasks: 'id, date, sectionId, seriesId, [seriesId+seriesDate]',
+        sections: 'id, order',
+        series: 'id',
+        learned: 'word, sectionId',
+      })
+      .upgrade(async (tx) => {
+        const sections = (await tx.table('sections').toArray()) as Section[];
+        const isPc = (s: Section) => s.builtin === 'komputer' || ['na komputerze', 'komputer'].includes(normalize(s.name.trim()));
+        if (sections.some(isPc)) return;
+        const inne = sections.find((s) => s.builtin === 'inne');
+        const pc = komputerSection(inne ? inne.order : sections.length);
+        if (inne) await tx.table('sections').where('order').aboveOrEqual(inne.order).modify((s: Section) => void (s.order += 1));
+        await tx.table('sections').add(pc);
+        if (!inne) return;
+        const all = [...sections, pc];
+        await tx
+          .table('tasks')
+          .where('sectionId')
+          .equals(inne.id)
+          .modify((t: Task) => {
+            if (!t.done && classify(t.title, all).sectionId === pc.id) t.sectionId = pc.id;
+          });
+        await tx
+          .table('series')
+          .filter((s: Series) => s.sectionId === inne.id && classify(s.title, all).sectionId === pc.id)
+          .modify((s: Series) => void (s.sectionId = pc.id));
       });
     // Przy pierwszym uruchomieniu tworzymy domyślne sekcje.
     this.on('populate', (tx) => {
