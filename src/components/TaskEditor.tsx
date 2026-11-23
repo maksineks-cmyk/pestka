@@ -1,5 +1,5 @@
 // Panel dodawania / edycji zadania: tytuł, sekcja, dzień, przypomnienie, powtarzanie i notatka.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AlertOffset, Recurrence, RecurrenceType, Section, Task } from '../lib/types';
 import { Sheet } from './Sheet';
 import { addTask, currentRecurrence, deleteTask, updateTask, type TaskInput } from '../db';
@@ -8,10 +8,13 @@ import { WEEKDAYS_SHORT, weekdayMon } from '../lib/dates';
 import { describeRecurrence } from '../lib/recurrence';
 import { ask, toast } from './Dialogs';
 import { IconBell, IconTrash } from './Icons';
+import { useLearned } from '../hooks';
+import { classify, fallbackSectionId } from '../lib/classifier';
 
 export interface EditorTarget {
   task?: Task; // brak = nowe zadanie
   date: string;
+  /** Pusty = sekcja dobierana automatycznie z nazwy zadania. */
   sectionId: string;
 }
 
@@ -38,6 +41,13 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
   const [alert, setAlert] = useState<AlertOffset>(10);
   const [repeat, setRepeat] = useState<RecurrenceType | 'none'>('none');
   const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [time, setTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [timeApprox, setTimeApprox] = useState(false);
+  // Czy użytkownik sam wybrał sekcję? Jeśli nie (nowe zadanie), dobieramy ją z nazwy.
+  const [sectionTouched, setSectionTouched] = useState(true);
+  const learnedRows = useLearned();
+  const learned = useMemo(() => Object.fromEntries(learnedRows.map((r) => [r.word, r.sectionId])), [learnedRows]);
 
   // Wypełnij formularz przy każdym otwarciu.
   useEffect(() => {
@@ -46,10 +56,14 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
     setTitle(t?.title ?? '');
     setNote(t?.note ?? '');
     setDate(t?.date ?? target.date);
-    setSectionId(t?.sectionId ?? target.sectionId);
+    setSectionId(t?.sectionId ?? (target.sectionId || fallbackSectionId(sections)));
+    setSectionTouched(!!t || !!target.sectionId);
+    setTime(t?.time ?? '');
+    setEndTime(t?.endTime ?? '');
+    setTimeApprox(!!t?.timeApprox);
     setHasReminder(!!t?.reminder);
     setRemDate(t?.reminder?.date ?? t?.date ?? target.date);
-    setRemTime(t?.reminder?.time ?? nextHour());
+    setRemTime(t?.reminder?.time ?? t?.time ?? nextHour());
     setAlert(t?.reminder?.alert ?? 10);
     setRepeat('none');
     setWeekdays([weekdayMon(t?.date ?? target.date)]);
@@ -60,7 +74,13 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
         if (r.weekdays) setWeekdays(r.weekdays);
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
+
+  const onTitle = (v: string) => {
+    setTitle(v);
+    if (!sectionTouched && v.trim()) setSectionId(classify(v, sections, learned).sectionId);
+  };
 
   const recurrence: Recurrence | undefined =
     repeat === 'none' ? undefined : repeat === 'weekdays' ? { type: 'weekdays', weekdays: [...weekdays].sort() } : { type: repeat };
@@ -73,6 +93,9 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
     // W zadaniach powtarzanych przypomnienie zawsze dotyczy dnia wystąpienia.
     reminder: hasReminder ? { date: recurrence ? date : remDate, time: remTime, alert } : undefined,
     recurrence,
+    time: time || undefined,
+    endTime: time && endTime > time ? endTime : undefined,
+    timeApprox: time ? timeApprox : undefined,
   });
 
   const save = async () => {
@@ -133,12 +156,15 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
           save();
         }}
       >
-        <input className="input input-big" placeholder="Co do zrobienia? np. Fryzjer" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} enterKeyHint="done" />
+        <input className="input input-big" placeholder="Co do zrobienia? np. Fryzjer" value={title} onChange={(e) => onTitle(e.target.value)} maxLength={120} enterKeyHint="done" />
 
         <label className="field-label">Sekcja</label>
         <div className="chips">
           {sections.map((s) => (
-            <button type="button" key={s.id} className={`chip ${sectionId === s.id ? 'is-on' : ''}`} style={{ ['--chip' as string]: s.color }} onClick={() => setSectionId(s.id)}>
+            <button type="button" key={s.id} className={`chip ${sectionId === s.id ? 'is-on' : ''}`} style={{ ['--chip' as string]: s.color }} onClick={() => {
+                setSectionId(s.id);
+                setSectionTouched(true);
+              }}>
               {s.emoji} {s.name}
             </button>
           ))}
@@ -151,6 +177,23 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
             if (remDate === date) setRemDate(v); // przypomnienie "podąża" za dniem zadania
             setDate(v);
           }} />
+
+        <label className="field-label">Godzina w planie dnia</label>
+        <div className="row2 time-row">
+          <input className="input" type="time" value={time} aria-label="Godzina" onChange={(e) => {
+              setTime(e.target.value);
+              setTimeApprox(false);
+              if (e.target.value && !hasReminder) setRemTime(e.target.value);
+            }} />
+          {time && <input className="input" type="time" value={endTime} aria-label="Do godziny (opcjonalnie)" onChange={(e) => setEndTime(e.target.value)} />}
+          {time && (
+            <button type="button" className="btn btn-small btn-secondary" onClick={() => { setTime(''); setEndTime(''); setTimeApprox(false); }}>
+              Bez godziny
+            </button>
+          )}
+        </div>
+        {!time && <p className="hint">Bez godziny zadanie trafi do swojej sekcji. Z godziną — na oś „Plan dnia”.</p>}
+        {time && <p className="hint">{timeApprox ? 'Godzina przybliżona. ' : ''}Drugie pole to (opcjonalny) koniec, np. 15:00–16:30.</p>}
 
         <label className="field-label">Powtarzaj</label>
         <div className="chips">
@@ -173,7 +216,10 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
 
         <label className="switch-row">
           <span><IconBell size={18} /> Przypomnienie</span>
-          <input type="checkbox" className="toggle" checked={hasReminder} onChange={(e) => setHasReminder(e.target.checked)} />
+          <input type="checkbox" className="toggle" checked={hasReminder} onChange={(e) => {
+              setHasReminder(e.target.checked);
+              if (e.target.checked && time) setRemTime(time);
+            }} />
         </label>
         {hasReminder && (
           <div className="reminder-box">

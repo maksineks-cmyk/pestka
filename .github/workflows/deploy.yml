@@ -25,6 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
         env:
           # Strona będzie pod adresem https://LOGIN.github.io/NAZWA-REPO/

@@ -1,7 +1,9 @@
 // Lokalna baza danych (IndexedDB przez Dexie) oraz wszystkie operacje na danych.
 // Nic nie jest wysyłane do internetu — dane zostają na telefonie.
 import Dexie, { type EntityTable } from 'dexie';
-import type { BackupFile, Recurrence, Reminder, Section, Series, Task } from './lib/types';
+import type { BackupFile, LearnedWord, Recurrence, Reminder, Section, Series, Task } from './lib/types';
+import { BUILTIN_BY_NAME } from './lib/keywords';
+import { learnableStems, normalize, type LearnedMap } from './lib/classifier';
 import { addDays, rangeKeys } from './lib/dates';
 import { occursOn } from './lib/recurrence';
 
@@ -14,16 +16,17 @@ export const uid = () =>
 export const SECTION_COLORS = ['#58cc02', '#1cb0f6', '#ff9600', '#ff4b4b', '#ce82ff', '#ffc800', '#00cd9c', '#ff86d0', '#8e6cef', '#a0785a'];
 
 const defaultSections = (): Section[] => [
-  { id: uid(), name: 'Praca', emoji: '💼', color: '#1cb0f6', order: 0 },
-  { id: uid(), name: 'Dom', emoji: '🏠', color: '#ff9600', order: 1 },
-  { id: uid(), name: 'Zdrowie', emoji: '💪', color: '#ff4b4b', order: 2 },
-  { id: uid(), name: 'Inne', emoji: '✨', color: '#ce82ff', order: 3 },
+  { id: uid(), name: 'Praca', emoji: '💼', color: '#1cb0f6', order: 0, builtin: 'praca', keywords: [] },
+  { id: uid(), name: 'Dom', emoji: '🏠', color: '#ff9600', order: 1, builtin: 'dom', keywords: [] },
+  { id: uid(), name: 'Zdrowie', emoji: '💪', color: '#ff4b4b', order: 2, builtin: 'zdrowie', keywords: [] },
+  { id: uid(), name: 'Inne', emoji: '✨', color: '#ce82ff', order: 3, builtin: 'inne', keywords: [] },
 ];
 
 class PlannerDB extends Dexie {
   tasks!: EntityTable<Task, 'id'>;
   sections!: EntityTable<Section, 'id'>;
   series!: EntityTable<Series, 'id'>;
+  learned!: EntityTable<LearnedWord, 'word'>;
 
   constructor() {
     super('pestka-planer');
@@ -32,6 +35,25 @@ class PlannerDB extends Dexie {
       sections: 'id, order',
       series: 'id',
     });
+    // Wersja 2: godziny w zadaniach (pola opcjonalne — stare zadania działają bez zmian),
+    // słowa kluczowe sekcji i tabela nauczonych słów. Migracja nie usuwa żadnych danych.
+    this.version(2)
+      .stores({
+        tasks: 'id, date, sectionId, seriesId, [seriesId+seriesDate]',
+        sections: 'id, order',
+        series: 'id',
+        learned: 'word, sectionId',
+      })
+      .upgrade(async (tx) => {
+        await tx.table('sections').toCollection().modify((s: Section) => {
+          if (!Array.isArray(s.keywords)) s.keywords = [];
+          // Domyślne sekcje dostają klucz słownika, żeby rozpoznawanie działało po zmianie nazwy.
+          if (!s.builtin) {
+            const key = BUILTIN_BY_NAME[normalize(s.name.trim())];
+            if (key) s.builtin = key;
+          }
+        });
+      });
     // Przy pierwszym uruchomieniu tworzymy domyślne sekcje.
     this.on('populate', (tx) => {
       tx.table('sections').bulkAdd(defaultSections());
@@ -52,7 +74,17 @@ export interface TaskInput {
   sectionId: string;
   reminder?: Reminder;
   recurrence?: Recurrence; // undefined = bez powtarzania
+  time?: string;
+  endTime?: string;
+  timeApprox?: boolean;
 }
+
+/** Pola godziny z formularza (undefined = brak godziny). */
+const timeFields = (input: TaskInput) => ({
+  time: input.time || undefined,
+  endTime: input.time ? input.endTime || undefined : undefined,
+  timeApprox: input.time && input.timeApprox ? true : undefined,
+});
 
 /** Kolejny numer porządkowy na końcu listy w danej sekcji i dniu. */
 async function nextOrder(date: string, sectionId: string) {
@@ -71,6 +103,7 @@ function seriesFrom(input: TaskInput, recurrence: Recurrence): Series {
     excluded: [],
     reminderTime: input.reminder?.time,
     reminderAlert: input.reminder?.alert,
+    ...timeFields(input),
   };
 }
 
@@ -89,6 +122,7 @@ export async function addTask(input: TaskInput): Promise<Task> {
       date: input.date,
       sectionId: input.sectionId,
       reminder: input.reminder,
+      ...timeFields(input),
       done: false,
       order: await nextOrder(input.date, input.sectionId),
       createdAt: Date.now(),
@@ -98,6 +132,18 @@ export async function addTask(input: TaskInput): Promise<Task> {
     await db.tasks.add(task);
     return task;
   });
+}
+
+/** Dodaje wiele zadań naraz (z szybkiego wpisu). Nigdy nie nadpisuje istniejących zadań dnia. */
+export async function addTasks(inputs: TaskInput[]) {
+  await db.transaction('rw', db.tasks, db.series, async () => {
+    for (const input of inputs) await addTask(input);
+  });
+}
+
+/** Zapisuje przypomnienie w zadaniu (np. po dodaniu .ics jednym stuknięciem). */
+export async function setTaskReminder(id: string, reminder: Reminder | undefined) {
+  await db.tasks.update(id, { reminder });
 }
 
 /** Kończy serię przed podanym dniem i usuwa jej przyszłe, niezrobione wystąpienia. */
@@ -121,6 +167,8 @@ async function endSeriesBefore(seriesId: string, date: string, keepTaskId?: stri
  * obejmują także przyszłe (niezrobione) powtórzenia.
  */
 export async function updateTask(task: Task, input: TaskInput) {
+  // Ręczne przeniesienie do innej sekcji = lekcja dla klasyfikatora.
+  if (task.sectionId !== input.sectionId) await learnSection(input.title, input.sectionId);
   await db.transaction('rw', db.tasks, db.series, async () => {
     const recurrenceChanged = JSON.stringify((await currentRecurrence(task)) ?? null) !== JSON.stringify(input.recurrence ?? null);
     const sectionChanged = task.sectionId !== input.sectionId;
@@ -130,6 +178,7 @@ export async function updateTask(task: Task, input: TaskInput) {
       date: input.date,
       sectionId: input.sectionId,
       reminder: input.reminder,
+      ...timeFields(input),
       order: sectionChanged || task.date !== input.date ? await nextOrder(input.date, input.sectionId) : task.order,
     };
 
@@ -142,6 +191,7 @@ export async function updateTask(task: Task, input: TaskInput) {
         sectionId: input.sectionId,
         reminderTime: input.reminder?.time,
         reminderAlert: input.reminder?.alert,
+        ...timeFields(input),
       });
       const others = await db.tasks.where('seriesId').equals(task.seriesId).filter((t) => t.id !== task.id && !t.done && (t.seriesDate ?? t.date) > from).toArray();
       for (const o of others) {
@@ -150,6 +200,7 @@ export async function updateTask(task: Task, input: TaskInput) {
           note: input.note,
           sectionId: input.sectionId,
           reminder: input.reminder ? { ...input.reminder, date: o.date } : undefined,
+          ...timeFields(input),
         });
       }
       await db.tasks.update(task.id, base);
@@ -263,10 +314,34 @@ export async function ensureSeriesForRange(from: string, to: string) {
           seriesId: s.id,
           seriesDate: day,
           reminder: s.reminderTime ? { date: day, time: s.reminderTime, alert: s.reminderAlert ?? 0 } : undefined,
+          time: s.time,
+          endTime: s.endTime,
+          timeApprox: s.timeApprox,
         });
       }
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Nauka klasyfikatora
+// ---------------------------------------------------------------------------
+
+/** Nauczone słowa jako mapa rdzeń → sekcja (dla klasyfikatora). */
+export async function getLearnedMap(): Promise<LearnedMap> {
+  const rows = await db.learned.toArray();
+  return Object.fromEntries(rows.map((r) => [r.word, r.sectionId]));
+}
+
+/** Zapamiętuje słowa z tytułu zadania dla wskazanej sekcji (nadpisuje wcześniejsze skojarzenia). */
+export async function learnSection(title: string, sectionId: string) {
+  const now = Date.now();
+  const rows = learnableStems(title).map((word) => ({ word, sectionId, updatedAt: now }));
+  if (rows.length) await db.learned.bulkPut(rows);
+}
+
+export async function forgetLearned(word: string) {
+  await db.learned.delete(word);
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +370,7 @@ export async function deleteSection(id: string, moveTo: string) {
     await db.series.filter((s) => s.sectionId === id).modify({ sectionId: moveTo });
     await db.sections.delete(id);
   });
+  await db.learned.where('sectionId').equals(id).delete();
 }
 
 // ---------------------------------------------------------------------------
@@ -304,11 +380,12 @@ export async function deleteSection(id: string, moveTo: string) {
 export async function exportData(): Promise<BackupFile> {
   return {
     app: 'pestka-planer',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     sections: await db.sections.toArray(),
     tasks: await db.tasks.toArray(),
     series: await db.series.toArray(),
+    learned: await db.learned.toArray(),
   };
 }
 
@@ -321,23 +398,29 @@ export function validateBackup(raw: unknown): BackupFile {
   if (!data.sections.length) throw new Error('Kopia nie zawiera żadnych sekcji.');
   const okTask = (t: Task) => typeof t.id === 'string' && typeof t.title === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.date);
   if (!data.tasks.every(okTask)) throw new Error('Plik zawiera uszkodzone zadania.');
-  return { ...data, series: data.series ?? [] } as BackupFile;
+  // Kopie z wersji 1 nie mają nauczonych słów ani słów kluczowych — uzupełniamy domyślnie.
+  const sections = data.sections.map((s) => {
+    const builtin = s.builtin ?? BUILTIN_BY_NAME[normalize(String(s.name ?? '').trim())];
+    return { ...s, keywords: Array.isArray(s.keywords) ? s.keywords : [], ...(builtin ? { builtin } : {}) };
+  });
+  return { ...data, sections, series: data.series ?? [], learned: Array.isArray(data.learned) ? data.learned : [] } as BackupFile;
 }
 
 /** Zastępuje wszystkie dane zawartością (sprawdzonej) kopii zapasowej. */
 export async function importData(data: BackupFile) {
-  await db.transaction('rw', db.tasks, db.series, db.sections, async () => {
-    await Promise.all([db.tasks.clear(), db.series.clear(), db.sections.clear()]);
+  await db.transaction('rw', [db.tasks, db.series, db.sections, db.learned], async () => {
+    await Promise.all([db.tasks.clear(), db.series.clear(), db.sections.clear(), db.learned.clear()]);
     await db.sections.bulkAdd(data.sections);
     await db.tasks.bulkAdd(data.tasks);
     await db.series.bulkAdd(data.series.map((s) => ({ ...s, excluded: s.excluded ?? [] })));
+    if (data.learned?.length) await db.learned.bulkPut(data.learned);
   });
 }
 
 /** Usuwa wszystkie dane i przywraca domyślne sekcje. */
 export async function resetAll() {
-  await db.transaction('rw', db.tasks, db.series, db.sections, async () => {
-    await Promise.all([db.tasks.clear(), db.series.clear(), db.sections.clear()]);
+  await db.transaction('rw', [db.tasks, db.series, db.sections, db.learned], async () => {
+    await Promise.all([db.tasks.clear(), db.series.clear(), db.sections.clear(), db.learned.clear()]);
     await db.sections.bulkAdd(defaultSections());
   });
 }

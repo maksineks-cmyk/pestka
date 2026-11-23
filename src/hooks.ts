@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import { todayKey } from './lib/dates';
 import { currentStreak, groupByDay, totalXp } from './lib/stats';
-import type { Section, Task } from './lib/types';
+import type { LearnedWord, Section, Task } from './lib/types';
 
 const EMPTY_TASKS: Task[] = [];
 const EMPTY_SECTIONS: Section[] = [];
@@ -52,4 +52,26 @@ export function useSwipe(onLeft: () => void, onRight: () => void) {
       if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) (dx < 0 ? onLeft : onRight)();
     },
   };
+}
+
+const EMPTY_LEARNED: LearnedWord[] = [];
+export const useLearned = () => useLiveQuery(() => db.learned.toArray(), [], EMPTY_LEARNED);
+
+/** Aktualna godzina w minutach od północy (odświeżana co 30 s) — do linii „teraz”. */
+export function useNowMinutes() {
+  const calc = () => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  };
+  const [now, setNow] = useState(calc);
+  useEffect(() => {
+    const id = setInterval(() => setNow(calc()), 30_000);
+    const vis = () => setNow(calc());
+    document.addEventListener('visibilitychange', vis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', vis);
+    };
+  }, []);
+  return now;
 }

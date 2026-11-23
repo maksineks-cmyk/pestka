@@ -14,7 +14,8 @@ export default function App() {
   const sections = useSections();
   const { map, streak, xp } = useGameStats(tasks, today);
 
-  const [tab, setTab] = useState<Tab>('calendar');
+  // Aplikacja startuje od razu w widoku dnia z szybkim wpisem.
+  const [tab, setTab] = useState<Tab>('today');
   // Dzień otwarty z kalendarza (null = widać siatkę miesiąca).
   const [calendarDay, setCalendarDay] = useState<string | null>(null);
   // Dzień pokazywany w zakładce "Dzisiaj" (można przewijać strzałkami).

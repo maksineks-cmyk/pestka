@@ -1,4 +1,5 @@
 // Model danych aplikacji.
+import type { BuiltinSectionKey } from './keywords';
 
 export interface Section {
   id: string;
@@ -6,6 +7,17 @@ export interface Section {
   emoji: string;
   color: string; // kolor HEX akcentu sekcji
   order: number;
+  /** Klucz wbudowanego słownika słów kluczowych (Praca/Dom/Zdrowie/Inne) — działa też po zmianie nazwy. */
+  builtin?: BuiltinSectionKey;
+  /** Własne słowa kluczowe użytkownika do automatycznego przypisywania zadań. */
+  keywords?: string[];
+}
+
+/** Słowo zapamiętane z ręcznego przeniesienia zadania do innej sekcji. */
+export interface LearnedWord {
+  word: string; // znormalizowany rdzeń słowa
+  sectionId: string;
+  updatedAt: number;
 }
 
 /** Minuty przed wydarzeniem, kiedy iPhone ma pokazać alert (0 = w chwili wydarzenia). */
@@ -36,6 +48,12 @@ export interface Task {
   order: number;
   createdAt: number;
   reminder?: Reminder;
+  /** Godzina w planie dnia "GG:MM" (zadania z godziną są na osi czasu). */
+  time?: string;
+  /** Koniec przedziału "GG:MM" (opcjonalnie). */
+  endTime?: string;
+  /** Godzina przybliżona („rano”, „wieczorem”). */
+  timeApprox?: boolean;
   /** Jeśli zadanie powstało z serii powtarzanej — id serii i jej oryginalna data. */
   seriesId?: string;
   seriesDate?: string;
@@ -55,13 +73,19 @@ export interface Series {
   /** Godzina przypomnienia kopiowana do wystąpień (data = dzień wystąpienia). */
   reminderTime?: string;
   reminderAlert?: AlertOffset;
+  /** Godzina w planie dnia kopiowana do wystąpień. */
+  time?: string;
+  endTime?: string;
+  timeApprox?: boolean;
 }
 
 export interface BackupFile {
   app: 'pestka-planer';
-  version: 1;
+  /** 1 = pierwsza wersja (bez godzin i nauki), 2 = z nauczonymi słowami. */
+  version: 1 | 2;
   exportedAt: string;
   sections: Section[];
   tasks: Task[];
   series: Series[];
+  learned?: LearnedWord[];
 }

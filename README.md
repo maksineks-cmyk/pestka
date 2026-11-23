@@ -5,6 +5,12 @@ Bez konta, bez logowania i bez serwera — wszystkie dane zostają na Twoim tele
 
 ## Co potrafi
 
+- **Szybki wpis „Co dziś masz do zrobienia?”** — wpisz wszystko w jedno pole (np. „fryzjer o 15, siłownia - zakupy w biedronce - mail do szefa, odkurzyć pokój 18:30, wyjść z psem”), stuknij **Zaplanuj dzień**, a Pestka sama podzieli tekst na zadania, przypisze sekcje i wykryje godziny. Przed zapisaniem zobaczysz podgląd, w którym poprawisz nazwę, sekcję (stuknij emoji) i godzinę.
+  - Separatory: przecinek, średnik, nowa linia, „ - ”, „– ”, „— ”, „• ”. Słowa z łącznikiem („e-mail”) i zakresy godzin („15-16”) nie są dzielone.
+  - Godziny: „15:00”, „15.00”, „o 15”, „na 9”, „15-16”, „15:00-16:30”, „rano”, „w południe”, „po południu”, „wieczorem”.
+  - **#dom odkurzyć** albo **odkurzyć #dom** — wymusza sekcję.
+  - Pestka **uczy się**: gdy ręcznie przeniesiesz zadanie do innej sekcji, zapamięta jego słowa. Własne słowa kluczowe ustawisz w **Ustawienia → sekcja**.
+- **Plan dnia** — oś czasu zadań z godziną z czerwoną linią „teraz”; przypomnienie `.ics` jednym stuknięciem w dzwonek.
 - **Kalendarz** miesięczny z pierścieniem postępu przy każdym dniu (przesuń palcem w lewo/prawo, aby zmienić miesiąc).
 - **Lista zadań na dzień** podzielona na **sekcje** (Praca, Dom, Zdrowie, Inne… — możesz je dodawać, zmieniać, usuwać, przestawiać, nadawać kolor i emoji).
 - Odhaczanie zadań z animacją, **+10 XP** za każde zadanie i **konfetti**, gdy skończysz cały dzień (+50 XP bonusu).
@@ -100,6 +106,7 @@ npm run dev        # serwer deweloperski (http://localhost:5173)
 npm run build      # wersja produkcyjna do folderu dist/
 npm run preview    # podgląd wersji produkcyjnej
 npm run icons      # ponowne wygenerowanie ikon z SVG (scripts/gen-icons.mjs)
+npm test           # testy jednostkowe (Vitest) parsera i klasyfikatora
 ```
 
 ### Technologie
@@ -124,6 +131,9 @@ planer/
    ├─ hooks.ts                    # dane na żywo, dzisiejsza data, gest przesunięcia
    ├─ styles.css                  # cały wygląd (motyw jasny/ciemny, animacje)
    ├─ lib/
+   │  ├─ parser.ts                # szybki wpis: dzielenie tekstu, wykrywanie godzin (+ parser.test.ts)
+   │  ├─ classifier.ts            # przypisywanie sekcji po słowach kluczowych, nauka (+ classifier.test.ts)
+   │  ├─ keywords.ts              # SŁOWNIKI słów kluczowych — tu dopisujesz nowe słowa
    │  ├─ dates.ts                 # daty po polsku
    │  ├─ recurrence.ts            # reguły powtarzania
    │  ├─ ics.ts                   # pliki kalendarza z alarmem
