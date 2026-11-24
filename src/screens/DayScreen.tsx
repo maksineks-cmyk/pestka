@@ -7,7 +7,7 @@ import { db, ensureSeriesForRange, getLearnedMap, moveUnfinishedToTomorrow, setT
 import { addDays, formatLong, friendlyDay } from '../lib/dates';
 import type { Section, Task } from '../lib/types';
 import { useNowMinutes, useSwipe } from '../hooks';
-import { DayBoard } from '../components/DayBoard';
+import { DayBoard, type DayView } from '../components/DayBoard';
 import { TimePicker } from '../components/TimePicker';
 import { TaskEditor, type EditorTarget } from '../components/TaskEditor';
 import { PlanPreview } from '../components/PlanPreview';
@@ -32,6 +32,15 @@ const EMPTY: Task[] = [];
 /** Ile ms świeżo odhaczone zadanie zostaje na swoim miejscu, zanim zjedzie na dół grupy. */
 const SINK_DELAY = 900;
 const COLLAPSED_KEY = 'pestka-collapsed-sections';
+const VIEW_KEY = 'pestka-day-view';
+
+function readView(): DayView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'sections' ? 'sections' : 'time';
+  } catch {
+    return 'time';
+  }
+}
 
 function readCollapsed(): string[] {
   try {
@@ -58,6 +67,16 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
   const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
   const [, setTick] = useState(0);
   const [timeFor, setTimeFor] = useState<Task | null>(null);
+  const [view, setView] = useState<DayView>(readView);
+  const changeView = (v: DayView) => {
+    setView(v);
+    haptic();
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* brak pamięci — widok działa do zamknięcia aplikacji */
+    }
+  };
   const nowMin = useNowMinutes();
 
   useEffect(() => {
@@ -188,7 +207,14 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
           </div>
         )}
 
+        {total > 0 && (
+          <div className="view-switch" role="tablist" aria-label="Układ zadań">
+            <button role="tab" aria-selected={view === 'time'} className={view === 'time' ? 'is-on' : ''} onClick={() => changeView('time')}>🕒 Godziny</button>
+            <button role="tab" aria-selected={view === 'sections'} className={view === 'sections' ? 'is-on' : ''} onClick={() => changeView('sections')}>🗂️ Sekcje</button>
+          </div>
+        )}
         <DayBoard
+          view={view}
           tasks={tasks}
           sections={sections}
           isToday={date === today}

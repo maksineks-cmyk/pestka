@@ -11,6 +11,7 @@ Bez konta, bez logowania i bez serwera — wszystkie dane zostają na Twoim tele
   - **#dom odkurzyć** albo **odkurzyć #dom** — wymusza sekcję.
   - Pestka **uczy się**: gdy ręcznie przeniesiesz zadanie do innej sekcji, zapamięta jego słowa. Własne słowa kluczowe ustawisz w **Ustawienia → sekcja**.
 - **Plan dnia** — oś czasu zadań z godziną z czerwoną linią „teraz”; przypomnienie `.ics` jednym stuknięciem w dzwonek.
+- **Widok „🕒 Godziny”** (domyślny): cały dzień jako jedna lista od rana do wieczora, zadania bez godziny w grupie „Kiedykolwiek”. Przełącznik **🗂️ Sekcje** pokazuje dawny podział na sekcje.
 - **Przeciąganie kafelków**: przytrzymaj zadanie i przesuń je do innej sekcji (Pestka zapamięta to na przyszłość) albo na „Plan dnia”, aby nadać mu godzinę.
 - **Szybka godzina**: stuknij zegar przy zadaniu (albo godzinę na osi czasu) → „Rano / Południe / Po południu / Wieczorem” jednym stuknięciem lub siatka godzin i minut.
 - **Kalendarz** miesięczny z pierścieniem postępu przy każdym dniu (przesuń palcem w lewo/prawo, aby zmienić miesiąc).

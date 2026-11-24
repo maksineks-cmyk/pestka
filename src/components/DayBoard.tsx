@@ -24,12 +24,16 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import type { Section, Task } from '../lib/types';
 import { TaskItem } from './TaskItem';
-import { IconPlus, IconRight } from './Icons';
+import { IconClock, IconPlus, IconRight } from './Icons';
 import { haptic } from '../lib/haptics';
-import { moveTaskToSection, reorderTasks } from '../db';
+import { moveTaskToSection, reorderTasks, setTaskTime } from '../db';
 import { toast } from './Dialogs';
 
 const PLAN = 'plan';
+/** Zadania bez godziny w widoku „Godziny”. */
+const ANYTIME = 'anytime';
+
+export type DayView = 'time' | 'sections';
 const ZONE = 'zone:';
 
 /** Blokuje ruch w poziomie — kafelki przesuwają się tylko w górę i w dół. */
@@ -77,6 +81,8 @@ function DragRow({ id, className, style, children }: { id: string; className?: s
 }
 
 interface Props {
+  /** „time” = jedna lista według godzin, „sections” = podział na sekcje. */
+  view: DayView;
   tasks: Task[];
   sections: Section[];
   isToday: boolean;
@@ -91,7 +97,7 @@ interface Props {
   onAdd: (sectionId: string) => void;
 }
 
-export function DayBoard({ tasks, sections, isToday, nowMin, collapsed, sinkDelay, onToggleCollapsed, onToggle, onEdit, onBell, onTime, onAdd }: Props) {
+export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, sinkDelay, onToggleCollapsed, onToggle, onEdit, onBell, onTime, onAdd }: Props) {
   const [active, setActive] = useState<Task | null>(null);
   const [overZone, setOverZone] = useState<string | null>(null);
 
@@ -111,6 +117,11 @@ export function DayBoard({ tasks, sections, isToday, nowMin, collapsed, sinkDela
 
   const timed = tasks.filter((t) => t.time).sort((a, b) => a.time!.localeCompare(b.time!) || a.order - b.order);
   const untimed = tasks.filter((t) => !t.time);
+  // Widok „Godziny”: zadania bez godziny w jednej grupie „Kiedykolwiek”, w kolejności sekcji.
+  const sectionRank = new Map(sections.map((s, i) => [s.id, i]));
+  const anytime = [...untimed].sort(
+    (a, b) => sunk(a) - sunk(b) || (sectionRank.get(sectionOf(a)?.id ?? '') ?? 0) - (sectionRank.get(sectionOf(b)?.id ?? '') ?? 0) || a.order - b.order,
+  );
   const listOf = (sid: string) => untimed.filter((t) => sectionOf(t)?.id === sid).sort((a, b) => sunk(a) - sunk(b) || a.order - b.order);
 
   const zoneOf = (id: string | number | undefined): string | null => {
@@ -119,7 +130,7 @@ export function DayBoard({ tasks, sections, isToday, nowMin, collapsed, sinkDela
     if (s.startsWith(ZONE)) return s.slice(ZONE.length);
     const t = byId.get(s);
     if (!t) return null;
-    return t.time ? PLAN : (sectionOf(t)?.id ?? null);
+    return t.time ? PLAN : view === 'time' ? ANYTIME : (sectionOf(t)?.id ?? null);
   };
 
   const onDragStart = (e: DragStartEvent) => {
@@ -137,10 +148,26 @@ export function DayBoard({ tasks, sections, isToday, nowMin, collapsed, sinkDela
     const target = zoneOf(e.over?.id);
     reset();
     if (!t || !target) return;
-    const from = t.time ? PLAN : sectionOf(t)?.id;
+    const from = zoneOf(t.id);
 
     if (target === PLAN) {
       if (!t.time) onTime(t); // upuszczone na „Plan dnia” → wybierz godzinę
+      return;
+    }
+    if (target === ANYTIME) {
+      if (from === PLAN) {
+        // Zadanie wyciągnięte z osi czasu → bez godziny.
+        await setTaskTime(t.id, undefined);
+        toast('Usunięto godzinę');
+        return;
+      }
+      const ids = anytime.map((x) => x.id);
+      const a = ids.indexOf(t.id);
+      const b = ids.indexOf(String(e.over?.id));
+      if (a >= 0 && b >= 0 && a !== b) {
+        await reorderTasks(arrayMove(ids, a, b));
+        haptic();
+      }
       return;
     }
     if (target === from) {
@@ -221,7 +248,42 @@ export function DayBoard({ tasks, sections, isToday, nowMin, collapsed, sinkDela
         </Zone>
       )}
 
-      {sections.map((s) => {
+      {view === 'time' && (anytime.length > 0 || dragging) && (
+        <Zone id={ANYTIME} className={`section plan anytime ${dragging ? 'is-drop-target' : ''} ${overZone === ANYTIME ? 'is-over' : ''}`} style={{ ['--sec' as string]: 'var(--purple)' }}>
+          <div className="section-head">
+            <span className="section-emoji">🌈</span>
+            <h2>Kiedykolwiek</h2>
+            {anytime.length > 0 && <span className="section-count">{anytime.filter((t) => t.done).length}/{anytime.length}</span>}
+          </div>
+          {anytime.length === 0 && <div className="drop-hint">Upuść tutaj, aby usunąć godzinę</div>}
+          {anytime.length > 0 && (
+            <SortableContext items={anytime.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+              <div className="timeline">
+                {anytime.map((t) => {
+                  const s = sectionOf(t);
+                  return (
+                    <DragRow key={t.id} id={t.id} className={`tl-row ${t.done ? 'is-done' : ''}`} style={{ ['--sec' as string]: s?.color }}>
+                      {(isDragging) => (
+                        <>
+                          <button className="tl-time tl-time-empty" onClick={() => onTime(t)} aria-label="Ustaw godzinę" disabled={t.done}>
+                            <IconClock size={20} />
+                          </button>
+                          <div className="tl-dot" aria-hidden="true">{s?.emoji}</div>
+                          <div className="tl-task">
+                            <TaskItem task={t} color={s?.color ?? '#ce82ff'} big dragging={isDragging} onToggle={onToggle} onEdit={onEdit} />
+                          </div>
+                        </>
+                      )}
+                    </DragRow>
+                  );
+                })}
+              </div>
+            </SortableContext>
+          )}
+        </Zone>
+      )}
+
+      {view === 'sections' && sections.map((s) => {
         const list = listOf(s.id);
         if (!list.length && !dragging) return null; // puste sekcje ukrywamy (poza przeciąganiem)
         const isCollapsed = collapsed.includes(s.id);

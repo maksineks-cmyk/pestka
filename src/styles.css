@@ -1038,6 +1038,37 @@ h1 {
   border-color: var(--blue);
 }
 
+.view-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--bg-soft);
+  border: 2px solid var(--border);
+}
+.view-switch button {
+  min-height: 40px;
+  border-radius: 12px;
+  font-weight: 900;
+  font-size: 15px;
+  color: var(--text-soft);
+  transition: background 0.15s, color 0.15s;
+}
+.view-switch button.is-on {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 2px 0 var(--border);
+}
+.tl-time-empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--border-dark);
+}
+.tl-time-empty:disabled {
+  opacity: 0.4;
+}
+
 /* --- Zadanie ------------------------------------------------------------- */
 .sortable-row {
   margin-bottom: 8px;
