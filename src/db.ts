@@ -177,9 +177,18 @@ export async function addTask(input: TaskInput): Promise<Task> {
 }
 
 /** Dodaje wiele zadań naraz (z szybkiego wpisu). Nigdy nie nadpisuje istniejących zadań dnia. */
-export async function addTasks(inputs: TaskInput[]) {
-  await db.transaction('rw', db.tasks, db.series, async () => {
-    for (const input of inputs) await addTask(input);
+export async function addTasks(inputs: TaskInput[]): Promise<Task[]> {
+  return db.transaction('rw', db.tasks, db.series, async () => {
+    const added: Task[] = [];
+    for (const input of inputs) added.push(await addTask(input));
+    return added;
+  });
+}
+
+/** Zmienia godziny wielu zadań naraz (przestawianie kolejności na osi czasu). */
+export async function setTimes(updates: { id: string; time: string; endTime?: string; timeApprox?: boolean }[]) {
+  await db.transaction('rw', db.tasks, async () => {
+    for (const u of updates) await db.tasks.update(u.id, { time: u.time, endTime: u.endTime, timeApprox: u.timeApprox || undefined });
   });
 }
 

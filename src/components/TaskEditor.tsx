@@ -12,6 +12,8 @@ import { useLearned } from '../hooks';
 import { classify, fallbackSectionId } from '../lib/classifier';
 import { extractTime } from '../lib/parser';
 import { TimePicker } from './TimePicker';
+import { offerUndoAdd, withUndo } from '../undo';
+import { db } from '../db';
 import { IconClock } from './Icons';
 
 export interface EditorTarget {
@@ -129,10 +131,21 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
       return;
     }
     const input = buildInput();
-    if (task) await updateTask(task, input);
-    else await addTask(input);
     onClose();
-    toast(task ? 'Zapisano zmiany ✅' : 'Dodano zadanie 🌱');
+    if (task) {
+      // Zmiana może objąć też przyszłe powtórzenia tej serii.
+      const ruleChanged = JSON.stringify((await currentRecurrence(task)) ?? null) !== JSON.stringify(input.recurrence ?? null);
+      if (ruleChanged) {
+        // Zmiana reguły powtarzania tworzy nową serię — tego nie da się bezpiecznie cofnąć.
+        await updateTask(task, input);
+        toast('Zapisano zmiany ✅');
+      } else {
+        const ids = task.seriesId ? await db.tasks.where('seriesId').equals(task.seriesId).primaryKeys() : [task.id];
+        await withUndo('Zapisano zmiany ✅', ids, () => updateTask(task, input));
+      }
+    } else {
+      offerUndoAdd('Dodano zadanie 🌱', [await addTask(input)]);
+    }
   };
 
   const addToCalendar = () => {
@@ -161,9 +174,9 @@ export function TaskEditor({ target, sections, onClose }: { target: EditorTarget
         ])
       : await ask('Usunąć zadanie?', `„${task.title}” zniknie na zawsze.`, [{ label: 'Usuń', value: 'one' as const, variant: 'danger' }]);
     if (!choice) return;
-    await deleteTask(task, choice);
     onClose();
-    toast('Usunięto zadanie 🗑️');
+    const ids = task.seriesId ? await db.tasks.where('seriesId').equals(task.seriesId).primaryKeys() : [task.id];
+    await withUndo('Usunięto zadanie 🗑️', ids, () => deleteTask(task, choice));
   };
 
   const toggleWeekday = (i: number) => setWeekdays((w) => (w.includes(i) ? w.filter((x) => x !== i) : [...w, i]));

@@ -19,6 +19,7 @@ import { haptic } from '../lib/haptics';
 import { downloadIcs } from '../lib/ics';
 import { parseBrainDump, type ParsedTask } from '../lib/parser';
 import { XP_PER_TASK, XP_PERFECT_DAY } from '../lib/stats';
+import { withUndo } from '../undo';
 
 interface Props {
   date: string;
@@ -58,7 +59,11 @@ function inputTitle(date: string, today: string) {
 }
 
 export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props) {
-  const tasks = useLiveQuery(() => db.tasks.where('date').equals(date).toArray(), [date], EMPTY);
+  const loaded = useLiveQuery(() => db.tasks.where('date').equals(date).toArray(), [date]);
+  const tasks = loaded ?? EMPTY;
+  // Pole „Co dziś masz do zrobienia?” — widoczne przy pustym dniu albo po stuknięciu „Dopisz zadania”.
+  const [quickOpen, setQuickOpen] = useState(false);
+  useEffect(() => setQuickOpen(false), [date]);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [dir, setDir] = useState<'next' | 'prev' | 'none'>('none');
@@ -107,7 +112,7 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
   const onToggle = async (t: Task) => {
     justToggled.current = true;
     haptic();
-    await toggleTask(t.id);
+    await withUndo(t.done ? 'Odznaczono ↩️' : `Zrobione ✅ +${XP_PER_TASK} XP`, [t.id], () => toggleTask(t.id));
     // Po chwili odświeżamy listę, żeby zrobione zadanie zjechało na dół grupy.
     setTimeout(() => setTick((n) => n + 1), SINK_DELAY + 50);
   };
@@ -130,8 +135,8 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
     const n = total - done;
     const ok = await confirmBox('Przenieść na jutro?', `${n} ${n === 1 ? 'niezrobione zadanie trafi' : 'niezrobionych zadań trafi'} na ${friendlyDay(addDays(date, 1)).toLowerCase()}.`, 'Przenieś');
     if (!ok) return;
-    const moved = await moveUnfinishedToTomorrow(date);
-    toast(`Przeniesiono: ${moved} ➡️`);
+    const ids = tasks.filter((t) => !t.done).map((t) => t.id);
+    await withUndo((moved: number) => `Przeniesiono: ${moved} ➡️`, ids, () => moveUnfinishedToTomorrow(date));
   };
 
   const toggleCollapsed = (id: string) => {
@@ -162,6 +167,16 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
         </div>
       </header>
 
+      {loaded !== undefined && total > 0 && !quickOpen && !dump.trim() ? (
+        <button className="quick-open" onClick={() => setQuickOpen(true)}>
+          <span className="quick-open-icon">✍️</span>
+          <span>
+            <b>Dopisz zadania</b>
+            <small>Wpisz kilka rzeczy naraz — rozłożę je sam</small>
+          </span>
+          <IconPlus size={20} />
+        </button>
+      ) : loaded !== undefined && (
       <form
         className={`quick card ${total ? 'has-tasks' : ''}`}
         onSubmit={(e) => {
@@ -178,12 +193,19 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
           onChange={(e) => setDump(e.target.value)}
           placeholder="np. fryzjer o 15, siłownia, zakupy w biedronce, mail do szefa, odkurzyć pokój 18:30…"
           enterKeyHint="enter"
+          autoFocus={quickOpen}
         />
         <button type="submit" className="btn btn-primary btn-block btn-lg quick-btn" disabled={!dump.trim()}>
           ✨ Zaplanuj dzień
         </button>
         <p className="hint">Oddzielaj przecinkami, myślnikami lub nowymi liniami. Godziny („o 15”, „18:30”, „rano”) wykryję sam, a <b>#dom</b> wymusza sekcję.</p>
+        {total > 0 && (
+          <button type="button" className="quick-close" onClick={() => { setQuickOpen(false); setDump(''); }}>
+            Schowaj
+          </button>
+        )}
       </form>
+      )}
 
       <div className="progress-card card">
         <Mascot mood={moodFor(done, total)} size={56} />
@@ -246,8 +268,7 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
         title={timeFor ? `O której: ${timeFor.title}?` : undefined}
         onPick={async (time) => {
           if (!timeFor) return;
-          await setTaskTime(timeFor.id, time);
-          toast(time ? `🕒 ${time} — dodano do planu dnia` : 'Usunięto godzinę');
+          await withUndo(time ? `🕒 ${time} — w planie dnia` : 'Usunięto godzinę', [timeFor.id], () => setTaskTime(timeFor.id, time));
         }}
         onClose={() => setTimeFor(null)}
       />
@@ -260,6 +281,7 @@ export function DayScreen({ date, today, sections, onChangeDate, onBack }: Props
         onSaved={() => {
           setPreview(null);
           setDump('');
+          setQuickOpen(false); // po zaplanowaniu pole się chowa
         }}
       />
 

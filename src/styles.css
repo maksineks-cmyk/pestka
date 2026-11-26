@@ -1069,6 +1069,69 @@ h1 {
   opacity: 0.4;
 }
 
+.quick-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 2px dashed color-mix(in srgb, var(--green) 55%, var(--border));
+  background: color-mix(in srgb, var(--green) 6%, var(--card));
+  color: var(--green-dark);
+  text-align: left;
+  animation: fade-up 0.2s ease-out;
+}
+.quick-open:active {
+  transform: scale(0.98);
+}
+.quick-open > span:nth-child(2) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.quick-open b {
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--text);
+}
+.quick-open small {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+.quick-open-icon {
+  font-size: 24px;
+}
+.quick-close {
+  align-self: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-soft);
+  padding: 4px 12px;
+}
+.toast.has-action {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 18px;
+  animation: toast-in-long 5s ease forwards;
+}
+.toast-action {
+  font-weight: 900;
+  color: #5a3d00;
+  padding: 6px 12px;
+  border-radius: 99px;
+  background: var(--yellow);
+  box-shadow: 0 2px 0 var(--yellow-dark);
+}
+@keyframes toast-in-long {
+  0% { opacity: 0; transform: translateY(-12px) scale(0.9); }
+  5%, 92% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+
 /* --- Zadanie ------------------------------------------------------------- */
 .sortable-row {
   margin-bottom: 8px;

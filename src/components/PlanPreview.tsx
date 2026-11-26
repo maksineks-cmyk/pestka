@@ -11,6 +11,7 @@ import { downloadIcs } from '../lib/ics';
 import { toast } from './Dialogs';
 import { IconBell } from './Icons';
 import { haptic } from '../lib/haptics';
+import { offerUndoAdd } from '../undo';
 
 interface Draft extends ParsedTask {
   key: string;
@@ -61,7 +62,7 @@ export function PlanPreview({
     if (!ready.length) return toast('Brak zadań do dodania ✏️');
     setSaving(true);
     try {
-      await addTasks(
+      const added = await addTasks(
         ready.map((d) => ({
           title: d.title.trim(),
           date,
@@ -75,7 +76,7 @@ export function PlanPreview({
       // Nauka: zapamiętujemy słowa z zadań, którym użytkownik ręcznie zmienił sekcję.
       for (const d of ready) if (d.sectionId !== d.autoSectionId) await learnSection(d.title, d.sectionId);
       haptic();
-      toast(ready.length === 1 ? 'Dodano 1 zadanie 🌱' : `Dodano zadania: ${ready.length} 🌱`);
+      offerUndoAdd(ready.length === 1 ? 'Dodano 1 zadanie 🌱' : `Dodano zadania: ${ready.length} 🌱`, added);
       onSaved();
     } finally {
       setSaving(false);

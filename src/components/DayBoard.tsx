@@ -26,8 +26,8 @@ import type { Section, Task } from '../lib/types';
 import { TaskItem } from './TaskItem';
 import { IconClock, IconPlus, IconRight } from './Icons';
 import { haptic } from '../lib/haptics';
-import { moveTaskToSection, reorderTasks, setTaskTime } from '../db';
-import { toast } from './Dialogs';
+import { moveTaskToSection, reorderTasks, setTaskTime, setTimes } from '../db';
+import { withUndo } from '../undo';
 
 const PLAN = 'plan';
 /** Zadania bez godziny w widoku „Godziny”. */
@@ -151,21 +151,43 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
     const from = zoneOf(t.id);
 
     if (target === PLAN) {
-      if (!t.time) onTime(t); // upuszczone na „Plan dnia” → wybierz godzinę
+      if (!t.time) {
+        onTime(t); // upuszczone na „Plan dnia” → wybierz godzinę
+        return;
+      }
+      // Przestawienie na osi czasu: zadania zamieniają się godzinami, a kolejność godzin zostaje.
+      const ids = timed.map((x) => x.id);
+      const a = ids.indexOf(t.id);
+      const b = ids.indexOf(String(e.over?.id));
+      if (a < 0 || b < 0 || a === b) return;
+      const order = arrayMove(ids, a, b);
+      const updates = order
+        .map((id, k) => {
+          const task = byId.get(id)!;
+          const slot = timed[k];
+          if (task.time === slot.time) return null;
+          // Czas trwania („15:00–16:30”) jedzie razem z zadaniem.
+          const dur = task.endTime ? toMin(task.endTime) - toMin(task.time!) : 0;
+          const end = dur > 0 && toMin(slot.time!) + dur < 24 * 60 ? fmtMin(toMin(slot.time!) + dur) : undefined;
+          return { id, time: slot.time!, endTime: end, timeApprox: slot.timeApprox };
+        })
+        .filter(Boolean) as { id: string; time: string; endTime?: string; timeApprox?: boolean }[];
+      const moved = updates.find((u) => u.id === t.id);
+      await withUndo(moved ? `🕒 ${t.title} → ${moved.time}` : 'Zmieniono kolejność', updates.map((u) => u.id), () => setTimes(updates));
+      haptic();
       return;
     }
     if (target === ANYTIME) {
       if (from === PLAN) {
         // Zadanie wyciągnięte z osi czasu → bez godziny.
-        await setTaskTime(t.id, undefined);
-        toast('Usunięto godzinę');
+        await withUndo('Usunięto godzinę', [t.id], () => setTaskTime(t.id, undefined));
         return;
       }
       const ids = anytime.map((x) => x.id);
       const a = ids.indexOf(t.id);
       const b = ids.indexOf(String(e.over?.id));
       if (a >= 0 && b >= 0 && a !== b) {
-        await reorderTasks(arrayMove(ids, a, b));
+        await withUndo('Zmieniono kolejność', ids, () => reorderTasks(arrayMove(ids, a, b)));
         haptic();
       }
       return;
@@ -176,7 +198,7 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
       const a = ids.indexOf(t.id);
       const b = ids.indexOf(String(e.over?.id));
       if (a >= 0 && b >= 0 && a !== b) {
-        await reorderTasks(arrayMove(ids, a, b));
+        await withUndo('Zmieniono kolejność', ids, () => reorderTasks(arrayMove(ids, a, b)));
         haptic();
       }
       return;
@@ -187,10 +209,9 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
     const ids = listOf(target).map((x) => x.id);
     const overIdx = ids.indexOf(String(e.over?.id));
     if (!t.time) ids.splice(overIdx >= 0 ? overIdx : ids.length, 0, t.id);
-    await moveTaskToSection(t.id, target, t.time ? undefined : ids);
-    haptic();
     const s = sectionById.get(target);
-    if (s) toast(`Przeniesiono do ${s.emoji} ${s.name}`);
+    await withUndo(s ? `Przeniesiono do ${s.emoji} ${s.name}` : 'Przeniesiono', [...ids, t.id], () => moveTaskToSection(t.id, target, t.time ? undefined : ids));
+    haptic();
   };
 
   const dragging = !!active;

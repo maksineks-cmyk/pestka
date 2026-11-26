@@ -6,11 +6,13 @@ type Variant = 'primary' | 'danger' | 'ghost' | 'blue';
 interface AskOption<T> { label: string; value: T; variant?: Variant }
 interface AskRequest { title: string; message?: string; options: AskOption<unknown>[]; resolve: (v: unknown) => void }
 
-let pushToast: ((msg: string) => void) | null = null;
+export interface ToastAction { label: string; onClick: () => void }
+let pushToast: ((msg: string, action?: ToastAction) => void) | null = null;
 let pushAsk: ((req: AskRequest) => void) | null = null;
 
-export function toast(msg: string) {
-  pushToast?.(msg);
+/** Krótkie powiadomienie. Z akcją (np. „Cofnij”) zostaje dłużej i da się je stuknąć. */
+export function toast(msg: string, action?: ToastAction) {
+  pushToast?.(msg, action);
 }
 
 /** Pokazuje pytanie z przyciskami. Zwraca wartość wybranej opcji albo null (anulowano). */
@@ -24,14 +26,15 @@ export const confirmBox = (title: string, message: string, confirmLabel = 'Tak',
   ask(title, message, [{ label: confirmLabel, value: true, variant: danger ? 'danger' : 'primary' }]).then((v) => v === true);
 
 export function DialogHost() {
-  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; msg: string; action?: ToastAction }[]>([]);
   const [req, setReq] = useState<AskRequest | null>(null);
 
   useEffect(() => {
-    pushToast = (msg) => {
+    pushToast = (msg, action) => {
       const id = Date.now() + Math.random();
-      setToasts((t) => [...t, { id, msg }]);
-      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2600);
+      // Nowe „Cofnij” zastępuje poprzednie — cofnąć można ostatnią zmianę.
+      setToasts((t) => [...(action ? t.filter((x) => !x.action) : t), { id, msg, action }]);
+      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), action ? 5000 : 2600);
     };
     // Nowe pytanie zastępuje poprzednie — poprzednie traktujemy jako anulowane.
     pushAsk = (next) =>
@@ -54,7 +57,20 @@ export function DialogHost() {
     <>
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className="toast">{t.msg}</div>
+          <div key={t.id} className={`toast ${t.action ? 'has-action' : ''}`}>
+            <span>{t.msg}</span>
+            {t.action && (
+              <button
+                className="toast-action"
+                onClick={() => {
+                  setToasts((all) => all.filter((x) => x.id !== t.id));
+                  t.action!.onClick();
+                }}
+              >
+                ↩️ {t.action.label}
+              </button>
+            )}
+          </div>
         ))}
       </div>
       {req && (
