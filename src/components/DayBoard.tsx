@@ -26,7 +26,7 @@ import type { Section, Task } from '../lib/types';
 import { TaskItem } from './TaskItem';
 import { IconClock, IconPlus, IconRight } from './Icons';
 import { haptic } from '../lib/haptics';
-import { moveTaskToSection, reorderTasks, setTaskTime, setTimes } from '../db';
+import { moveTaskToSection, reorderDay, reorderTasks, setTaskTime, setTimes } from '../db';
 import { withUndo } from '../undo';
 
 const PLAN = 'plan';
@@ -115,13 +115,13 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
   const now = Date.now();
   const sunk = (t: Task) => (t.done && now - (t.doneAt ?? 0) > sinkDelay ? 1 : 0);
 
-  const timed = tasks.filter((t) => t.time).sort((a, b) => a.time!.localeCompare(b.time!) || a.order - b.order);
+  const timed = tasks.filter((t) => t.time).sort((a, b) => a.time!.localeCompare(b.time!) || (a.dayOrder ?? a.order) - (b.dayOrder ?? b.order));
   const untimed = tasks.filter((t) => !t.time);
   // Widok „Godziny”: zadania bez godziny w jednej grupie „Kiedykolwiek”, w kolejności sekcji.
   const sectionRank = new Map(sections.map((s, i) => [s.id, i]));
-  const anytime = [...untimed].sort(
-    (a, b) => sunk(a) - sunk(b) || (sectionRank.get(sectionOf(a)?.id ?? '') ?? 0) - (sectionRank.get(sectionOf(b)?.id ?? '') ?? 0) || a.order - b.order,
-  );
+  // Kolejność ustawiona przeciąganiem (dayOrder) ma pierwszeństwo; nowe zadania lądują na końcu, pogrupowane wg sekcji.
+  const anyKey = (t: Task) => t.dayOrder ?? 100_000 + (sectionRank.get(sectionOf(t)?.id ?? '') ?? 0) * 1000 + t.order;
+  const anytime = [...untimed].sort((a, b) => sunk(a) - sunk(b) || anyKey(a) - anyKey(b));
   const listOf = (sid: string) => untimed.filter((t) => sectionOf(t)?.id === sid).sort((a, b) => sunk(a) - sunk(b) || a.order - b.order);
 
   const zoneOf = (id: string | number | undefined): string | null => {
@@ -173,7 +173,11 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
         })
         .filter(Boolean) as { id: string; time: string; endTime?: string; timeApprox?: boolean }[];
       const moved = updates.find((u) => u.id === t.id);
-      await withUndo(moved ? `🕒 ${t.title} → ${moved.time}` : 'Zmieniono kolejność', updates.map((u) => u.id), () => setTimes(updates));
+      // dayOrder rozstrzyga kolejność zadań o tej samej godzinie.
+      await withUndo(moved ? `🕒 ${t.title} → ${moved.time}` : 'Zmieniono kolejność', ids, async () => {
+        await setTimes(updates);
+        await reorderDay(order);
+      });
       haptic();
       return;
     }
@@ -187,7 +191,7 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
       const a = ids.indexOf(t.id);
       const b = ids.indexOf(String(e.over?.id));
       if (a >= 0 && b >= 0 && a !== b) {
-        await withUndo('Zmieniono kolejność', ids, () => reorderTasks(arrayMove(ids, a, b)));
+        await withUndo('Zmieniono kolejność', ids, () => reorderDay(arrayMove(ids, a, b)));
         haptic();
       }
       return;

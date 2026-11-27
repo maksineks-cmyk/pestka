@@ -185,6 +185,13 @@ export async function addTasks(inputs: TaskInput[]): Promise<Task[]> {
   });
 }
 
+/** Zapisuje kolejność zadań w grupie „Kiedykolwiek” (niezależną od sekcji). */
+export async function reorderDay(ids: string[]) {
+  await db.transaction('rw', db.tasks, async () => {
+    await Promise.all(ids.map((id, i) => db.tasks.update(id, { dayOrder: i })));
+  });
+}
+
 /** Zmienia godziny wielu zadań naraz (przestawianie kolejności na osi czasu). */
 export async function setTimes(updates: { id: string; time: string; endTime?: string; timeApprox?: boolean }[]) {
   await db.transaction('rw', db.tasks, async () => {

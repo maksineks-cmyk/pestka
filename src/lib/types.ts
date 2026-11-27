@@ -54,6 +54,8 @@ export interface Task {
   endTime?: string;
   /** Godzina przybliżona („rano”, „wieczorem”). */
   timeApprox?: boolean;
+  /** Kolejność w grupie „Kiedykolwiek” (widok „Godziny”), ustawiana przeciąganiem. */
+  dayOrder?: number;
   /** Jeśli zadanie powstało z serii powtarzanej — id serii i jej oryginalna data. */
   seriesId?: string;
   seriesDate?: string;
