@@ -1132,6 +1132,89 @@ h1 {
   100% { opacity: 0; transform: translateY(-8px); }
 }
 
+/* --- Płynne przeciąganie ------------------------------------------------------ */
+/* Kafelki w listach animuje FLIP (DayBoard), więc bez CSS-owego „pop” przy każdym przeniesieniu. */
+.flip .task {
+  animation: none;
+}
+.drag-overlay {
+  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.22));
+  animation: lift 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+.drag-overlay .task {
+  transform: scale(1.03) rotate(-0.6deg);
+  border-color: var(--sec);
+}
+.drag-overlay {
+  transition: opacity 0.15s, transform 0.15s;
+}
+/* Nad paskiem na dole kafelek maleje i przezroczystnieje, żeby było widać cel. */
+.drag-overlay.is-over-dock {
+  opacity: 0.45;
+  transform: scale(0.75);
+}
+@keyframes lift {
+  from { transform: scale(0.97); }
+  to { transform: scale(1); }
+}
+.drag-dock {
+  /* Zajmuje miejsce dolnego paska zakładek — nie zasłania żadnych kafelków. */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  max-width: 560px;
+  margin: 0 auto;
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding: 6px 8px var(--safe-bottom);
+  background: var(--bg);
+  border-top: 2px solid var(--border);
+  animation: dock-up 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+@keyframes dock-up {
+  from { transform: translateY(20px); opacity: 0; }
+}
+.drag-dock-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+  height: 100%;
+}
+.dock-target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  border-radius: 14px;
+  border: 2px dashed color-mix(in srgb, var(--sec) 55%, var(--border));
+  background: color-mix(in srgb, var(--sec) 8%, var(--card));
+  font-weight: 800;
+  font-size: 11px;
+  text-align: center;
+  transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.4), background 0.15s, border-color 0.15s;
+}
+.dock-emoji {
+  font-size: 22px;
+  line-height: 1.1;
+}
+.dock-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  padding: 0 2px;
+}
+.dock-target.is-over {
+  transform: scale(1.08);
+  border-style: solid;
+  border-color: var(--sec);
+  background: color-mix(in srgb, var(--sec) 22%, var(--card));
+}
+
 /* --- Zadanie ------------------------------------------------------------- */
 .sortable-row {
   margin-bottom: 8px;

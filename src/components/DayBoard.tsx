@@ -2,8 +2,14 @@
 // - w obrębie sekcji → zmiana kolejności,
 // - do innej sekcji → przeniesienie (Pestka uczy się z tego przy następnych wpisach),
 // - na „Plan dnia” → wybór godziny.
-// Podczas przeciągania widać też puste sekcje, żeby można było do nich upuścić zadanie.
-import { useState, type HTMLAttributes, type ReactNode } from 'react';
+// Podczas przeciągania na dole pojawia się pasek z sekcjami (i „Ustaw godzinę” / „Bez godziny”),
+// więc lista pod palcem nic się nie przesuwa.
+//
+// Płynność:
+// - po upuszczeniu kolejność zmienia się od razu (stan „optymistyczny”), zanim zapisze się baza,
+// - wszystkie zmiany miejsca kafelków są animowane (technika FLIP), także zjeżdżanie zrobionych zadań,
+// - odhaczenie widać natychmiast.
+import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -35,17 +41,39 @@ const ANYTIME = 'anytime';
 
 export type DayView = 'time' | 'sections';
 const ZONE = 'zone:';
+const DOCK = 'dock:';
+const isZoneId = (id: string | number) => String(id).startsWith(ZONE) || String(id).startsWith(DOCK);
 
 /** Blokuje ruch w poziomie — kafelki przesuwają się tylko w górę i w dół. */
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 
-/** Najpierw kafelek pod palcem, potem sekcja pod palcem, a w ostateczności najbliższy element. */
+/** Ostatnie położenie palca/kursora na ekranie (współrzędne okna). */
+const pointer = { x: -1, y: -1 };
+const trackPointer = (e: PointerEvent | TouchEvent) => {
+  const p = 'touches' in e ? e.touches[0] : e;
+  if (p) {
+    pointer.x = p.clientX;
+    pointer.y = p.clientY;
+  }
+};
+
+/**
+ * Najpierw pasek na dole (sprawdzany bezpośrednio na ekranie — jest „przyklejony”, więc
+ * zwykłe pomiary dnd-kit po przewinięciu strony by się myliły), potem kafelek pod palcem,
+ * potem sekcja pod palcem, a w ostateczności najbliższy element.
+ */
 const collide: CollisionDetection = (args) => {
-  const within = pointerWithin(args);
-  const tasks = within.filter((c) => !String(c.id).startsWith(ZONE));
+  for (const el of document.querySelectorAll<HTMLElement>('[data-dock]')) {
+    const r = el.getBoundingClientRect();
+    if (pointer.x >= r.left && pointer.x <= r.right && pointer.y >= r.top && pointer.y <= r.bottom) {
+      return [{ id: DOCK + el.dataset.dock }];
+    }
+  }
+  const within = pointerWithin(args).filter((c) => !String(c.id).startsWith(DOCK));
+  const tasks = within.filter((c) => !isZoneId(c.id));
   if (tasks.length) return tasks;
   if (within.length) return within;
-  return closestCenter(args);
+  return closestCenter({ ...args, droppableContainers: args.droppableContainers.filter((c) => !String(c.id).startsWith(DOCK)) });
 };
 
 const toMin = (t: string) => {
@@ -63,8 +91,72 @@ function Zone({ id, className, style, children }: { id: string; className: strin
   );
 }
 
+function DockTarget({ id, label, emoji, color }: { id: string; label: string; emoji: string; color?: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: DOCK + id });
+  return (
+    <div ref={setNodeRef} data-dock={id} className={`dock-target ${isOver ? 'is-over' : ''}`} style={{ ['--sec' as string]: color ?? 'var(--blue)' }}>
+      <span className="dock-emoji">{emoji}</span>
+      <span className="dock-label">{label}</span>
+    </div>
+  );
+}
+
+type Pos = { top: number; left: number };
+
+/**
+ * Animacje FLIP: po każdej zmianie mierzymy położenie kafelków ([data-flip]) i płynnie
+ * przesuwamy je z poprzedniego miejsca na nowe.
+ */
+function useFlip(dragging: boolean) {
+  const prev = useRef(new Map<string, Pos>());
+  const from = useRef<Map<string, Pos> | null>(null);
+  const wasDragging = useRef(false);
+  const measure = () => {
+    const m = new Map<string, Pos>();
+    document.querySelectorAll<HTMLElement>('[data-flip]').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      m.set(el.dataset.flip!, { top: r.top + window.scrollY, left: r.left + window.scrollX });
+    });
+    return m;
+  };
+  useLayoutEffect(() => {
+    const start = from.current ?? (dragging || wasDragging.current ? null : prev.current);
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const now = new Map<string, Pos>();
+    document.querySelectorAll<HTMLElement>('[data-flip]').forEach((el) => {
+      const id = el.dataset.flip!;
+      const r = el.getBoundingClientRect();
+      const pos = { top: r.top + window.scrollY, left: r.left + window.scrollX };
+      now.set(id, pos);
+      const p = start?.get(id);
+      if (reduce) return;
+      // Nowy kafelek (np. po „Dodaj wszystko”) wskakuje z delikatnym „pop”.
+      if (!p && !prev.current.has(id) && prev.current.size) {
+        el.animate([{ opacity: 0, transform: 'scale(0.9)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.3)' });
+        return;
+      }
+      if (!p) return;
+      const dy = p.top - pos.top;
+      const dx = p.left - pos.left;
+      if (Math.abs(dy) < 1 && Math.abs(dx) < 1) return;
+      el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.2, 0.9, 0.25, 1)' });
+    });
+    prev.current = now;
+    from.current = null;
+    wasDragging.current = dragging;
+  });
+  /** Zapamiętuje obecne położenie (np. w chwili upuszczenia) jako punkt startu animacji. */
+  const capture = (override?: [string, Pos]) => {
+    const m = measure();
+    if (override) m.set(override[0], override[1]);
+    from.current = m;
+  };
+  return capture;
+}
+
 function DragRow({ id, className, style, children }: { id: string; className?: string; style?: React.CSSProperties; children: (dragging: boolean) => ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // Bez wbudowanej animacji dnd-kit po upuszczeniu — tym zajmuje się FLIP.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, animateLayoutChanges: () => false });
   // Bez klawiatury: Enter/spacja na przyciskach w kafelku nie może uruchamiać przeciągania.
   const { tabIndex: _t, role: _r, ...attrs } = attributes;
   return (
@@ -72,10 +164,13 @@ function DragRow({ id, className, style, children }: { id: string; className?: s
       ref={setNodeRef}
       {...(attrs as HTMLAttributes<HTMLDivElement>)}
       {...listeners}
-      className={`sortable-row ${className ?? ''} ${isDragging ? 'is-placeholder' : ''}`}
-      style={{ ...style, transform: CSS.Translate.toString(transform), transition }}
+      className={`sortable-row ${isDragging ? 'is-placeholder' : ''}`}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
     >
-      {children(isDragging)}
+      {/* Wewnętrzna warstwa: układ wiersza + animacje FLIP (zewnętrzną przesuwa dnd-kit). */}
+      <div className={`flip ${className ?? ''}`} style={style} data-flip={id}>
+        {children(isDragging)}
+      </div>
     </div>
   );
 }
@@ -90,22 +185,54 @@ interface Props {
   collapsed: string[];
   sinkDelay: number;
   onToggleCollapsed: (id: string) => void;
-  onToggle: (t: Task) => void;
+  onToggle: (t: Task) => void | Promise<void>;
   onEdit: (t: Task) => void;
   onBell: (t: Task) => void;
   onTime: (t: Task) => void;
   onAdd: (sectionId: string) => void;
 }
 
-export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, sinkDelay, onToggleCollapsed, onToggle, onEdit, onBell, onTime, onAdd }: Props) {
+export function DayBoard({ view, tasks: dbTasks, sections, isToday, nowMin, collapsed, sinkDelay, onToggleCollapsed, onToggle, onEdit, onBell, onTime, onAdd }: Props) {
   const [active, setActive] = useState<Task | null>(null);
   const [overZone, setOverZone] = useState<string | null>(null);
+  const [overDock, setOverDock] = useState(false);
+  const capture = useFlip(!!active);
 
-  // Przytrzymanie palcem (0,25 s) zaczyna przeciąganie; zwykłe przewijanie działa jak dawniej.
+  // Stan „optymistyczny”: zmiany widać od razu, a baza zapisuje się w tle.
+  const [pending, setPending] = useState<Map<string, Partial<Task>>>(() => new Map());
+  const settled = useRef(true);
+  useEffect(() => {
+    // Baza odświeżyła dane po zapisie → nasze tymczasowe zmiany nie są już potrzebne.
+    if (settled.current && pending.size) setPending(new Map());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbTasks]);
+  const tasks = pending.size ? dbTasks.map((t) => (pending.has(t.id) ? { ...t, ...pending.get(t.id) } : t)) : dbTasks;
+
+  /** Pokazuje zmianę od razu i zapisuje ją w tle. */
+  const optimistic = async (patches: [string, Partial<Task>][], write: () => Promise<unknown>) => {
+    settled.current = false;
+    setPending((p) => {
+      const next = new Map(p);
+      for (const [id, ch] of patches) next.set(id, { ...next.get(id), ...ch });
+      return next;
+    });
+    try {
+      await write();
+    } finally {
+      settled.current = true;
+    }
+  };
+
+  // Przytrzymanie palcem (0,2 s) zaczyna przeciąganie; zwykłe przewijanie działa jak dawniej.
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
+
+  const toggle = (t: Task) => {
+    capture();
+    return optimistic([[t.id, { done: !t.done, doneAt: t.done ? undefined : Date.now() }]], async () => onToggle(t));
+  };
 
   const sectionById = new Map(sections.map((s) => [s.id, s]));
   const sectionOf = (t: Task) => sectionById.get(t.sectionId) ?? sections[0];
@@ -128,24 +255,44 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
     if (id === undefined) return null;
     const s = String(id);
     if (s.startsWith(ZONE)) return s.slice(ZONE.length);
+    if (s.startsWith(DOCK)) return s.slice(DOCK.length);
     const t = byId.get(s);
     if (!t) return null;
     return t.time ? PLAN : view === 'time' ? ANYTIME : (sectionOf(t)?.id ?? null);
   };
 
+  useEffect(() => {
+    window.addEventListener('pointermove', trackPointer, { passive: true });
+    window.addEventListener('touchmove', trackPointer, { passive: true });
+    window.addEventListener('touchstart', trackPointer, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', trackPointer);
+      window.removeEventListener('touchmove', trackPointer);
+      window.removeEventListener('touchstart', trackPointer);
+    };
+  }, []);
+
   const onDragStart = (e: DragStartEvent) => {
     setActive(byId.get(String(e.active.id)) ?? null);
     haptic();
   };
-  const onDragOver = (e: DragOverEvent) => setOverZone(zoneOf(e.over?.id));
+  const onDragOver = (e: DragOverEvent) => {
+    setOverZone(zoneOf(e.over?.id));
+    setOverDock(!!e.over && String(e.over.id).startsWith(DOCK));
+  };
   const reset = () => {
     setActive(null);
     setOverZone(null);
+    setOverDock(false);
   };
 
   const onDragEnd = async (e: DragEndEvent) => {
     const t = byId.get(String(e.active.id));
     const target = zoneOf(e.over?.id);
+    const fromDock = !!e.over && String(e.over.id).startsWith(DOCK);
+    // Punkt startu animacji: aktualne miejsca kafelków + kafelek „w palcach” tam, gdzie go puszczono.
+    const r = e.active.rect.current.translated;
+    capture(r ? [String(e.active.id), { top: r.top + window.scrollY, left: r.left + window.scrollX }] : undefined);
     reset();
     if (!t || !target) return;
     const from = zoneOf(t.id);
@@ -174,25 +321,41 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
         .filter(Boolean) as { id: string; time: string; endTime?: string; timeApprox?: boolean }[];
       const moved = updates.find((u) => u.id === t.id);
       // dayOrder rozstrzyga kolejność zadań o tej samej godzinie.
-      await withUndo(moved ? `🕒 ${t.title} → ${moved.time}` : 'Zmieniono kolejność', ids, async () => {
-        await setTimes(updates);
-        await reorderDay(order);
-      });
       haptic();
+      await optimistic(
+        [...order.map((id, k): [string, Partial<Task>] => [id, { dayOrder: k }]), ...updates.map((u): [string, Partial<Task>] => [u.id, { time: u.time, endTime: u.endTime, timeApprox: u.timeApprox }])],
+        () =>
+          withUndo(moved ? `🕒 ${t.title} → ${moved.time}` : 'Zmieniono kolejność', ids, async () => {
+            await setTimes(updates);
+            await reorderDay(order);
+          }),
+      );
       return;
     }
     if (target === ANYTIME) {
       if (from === PLAN) {
-        // Zadanie wyciągnięte z osi czasu → bez godziny.
-        await withUndo('Usunięto godzinę', [t.id], () => setTaskTime(t.id, undefined));
+        // Zadanie wyciągnięte z osi czasu → bez godziny, w miejscu upuszczenia.
+        const ids = anytime.map((x) => x.id);
+        const overIdx = ids.indexOf(String(e.over?.id));
+        ids.splice(overIdx >= 0 ? overIdx : ids.length, 0, t.id);
+        haptic();
+        await optimistic(
+          [[t.id, { time: undefined, endTime: undefined, timeApprox: undefined }], ...ids.map((id, k): [string, Partial<Task>] => [id, { dayOrder: k }])],
+          () =>
+            withUndo('Usunięto godzinę', ids, async () => {
+              await setTaskTime(t.id, undefined);
+              await reorderDay(ids);
+            }),
+        );
         return;
       }
       const ids = anytime.map((x) => x.id);
       const a = ids.indexOf(t.id);
       const b = ids.indexOf(String(e.over?.id));
       if (a >= 0 && b >= 0 && a !== b) {
-        await withUndo('Zmieniono kolejność', ids, () => reorderDay(arrayMove(ids, a, b)));
+        const order = arrayMove(ids, a, b);
         haptic();
+        await optimistic(order.map((id, k) => [id, { dayOrder: k }]), () => withUndo('Zmieniono kolejność', ids, () => reorderDay(order)));
       }
       return;
     }
@@ -202,20 +365,27 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
       const a = ids.indexOf(t.id);
       const b = ids.indexOf(String(e.over?.id));
       if (a >= 0 && b >= 0 && a !== b) {
-        await withUndo('Zmieniono kolejność', ids, () => reorderTasks(arrayMove(ids, a, b)));
+        const order = arrayMove(ids, a, b);
         haptic();
+        await optimistic(order.map((id, k) => [id, { order: k }]), () => withUndo('Zmieniono kolejność', ids, () => reorderTasks(order)));
       }
       return;
     }
-    if (t.time && target === t.sectionId) return; // zadanie z osi czasu już jest w tej sekcji
+    if (target === t.sectionId) return; // już jest w tej sekcji
 
     // Przeniesienie do innej sekcji — w miejsce kafelka, nad którym upuszczono (albo na koniec).
+    // Z paska na dole albo w widoku „Godziny” zmienia się tylko sekcja (zadanie zostaje na swoim miejscu listy).
+    const keepPlace = !!t.time || fromDock || view === 'time';
     const ids = listOf(target).map((x) => x.id);
     const overIdx = ids.indexOf(String(e.over?.id));
-    if (!t.time) ids.splice(overIdx >= 0 ? overIdx : ids.length, 0, t.id);
+    if (!keepPlace) ids.splice(overIdx >= 0 ? overIdx : ids.length, 0, t.id);
+    else ids.push(t.id);
     const s = sectionById.get(target);
-    await withUndo(s ? `Przeniesiono do ${s.emoji} ${s.name}` : 'Przeniesiono', [...ids, t.id], () => moveTaskToSection(t.id, target, t.time ? undefined : ids));
     haptic();
+    await optimistic(
+      [[t.id, { sectionId: target }], ...ids.map((id, k): [string, Partial<Task>] => [id, { order: k }])],
+      () => withUndo(s ? `Przeniesiono do ${s.emoji} ${s.name}` : 'Przeniesiono', ids, () => moveTaskToSection(t.id, target, ids)),
+    );
   };
 
   const dragging = !!active;
@@ -229,15 +399,19 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={collide} modifiers={[verticalOnly]} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={reset}>
-      {(timed.length > 0 || dragging) && (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collide}
+      modifiers={[verticalOnly]}
+            autoScroll={{ enabled: !overDock, threshold: { x: 0, y: 0.2 } }}
+      onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={reset}>
+      {timed.length > 0 && (
         <Zone id={PLAN} className={`section plan ${dragging ? 'is-drop-target' : ''} ${overZone === PLAN ? 'is-over' : ''}`} style={{ ['--sec' as string]: 'var(--blue)' }}>
           <div className="section-head">
             <span className="section-emoji">🗓️</span>
             <h2>Plan dnia</h2>
             {timed.length > 0 && <span className="section-count">{timedDone}/{timed.length}</span>}
           </div>
-          {timed.length === 0 && <div className="drop-hint">Upuść tutaj, aby ustawić godzinę 🕒</div>}
           {timed.length > 0 && (
             <SortableContext items={timed.map((t) => t.id)} strategy={verticalListSortingStrategy}>
               <div className="timeline">
@@ -259,7 +433,7 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
                           </button>
                           <div className="tl-dot" aria-hidden="true">{s?.emoji}</div>
                           <div className="tl-task">
-                            <TaskItem task={t} color={s?.color ?? '#ce82ff'} big dragging={isDragging} onToggle={onToggle} onEdit={onEdit} onBell={onBell} />
+                            <TaskItem task={t} color={s?.color ?? '#ce82ff'} big dragging={isDragging} onToggle={toggle} onEdit={onEdit} onBell={onBell} />
                           </div>
                         </>
                       )}
@@ -273,14 +447,13 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
         </Zone>
       )}
 
-      {view === 'time' && (anytime.length > 0 || dragging) && (
+      {view === 'time' && anytime.length > 0 && (
         <Zone id={ANYTIME} className={`section plan anytime ${dragging ? 'is-drop-target' : ''} ${overZone === ANYTIME ? 'is-over' : ''}`} style={{ ['--sec' as string]: 'var(--purple)' }}>
           <div className="section-head">
             <span className="section-emoji">🌈</span>
             <h2>Kiedykolwiek</h2>
             {anytime.length > 0 && <span className="section-count">{anytime.filter((t) => t.done).length}/{anytime.length}</span>}
           </div>
-          {anytime.length === 0 && <div className="drop-hint">Upuść tutaj, aby usunąć godzinę</div>}
           {anytime.length > 0 && (
             <SortableContext items={anytime.map((t) => t.id)} strategy={verticalListSortingStrategy}>
               <div className="timeline">
@@ -295,7 +468,7 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
                           </button>
                           <div className="tl-dot" aria-hidden="true">{s?.emoji}</div>
                           <div className="tl-task">
-                            <TaskItem task={t} color={s?.color ?? '#ce82ff'} big dragging={isDragging} onToggle={onToggle} onEdit={onEdit} />
+                            <TaskItem task={t} color={s?.color ?? '#ce82ff'} big dragging={isDragging} onToggle={toggle} onEdit={onEdit} />
                           </div>
                         </>
                       )}
@@ -310,7 +483,7 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
 
       {view === 'sections' && sections.map((s) => {
         const list = listOf(s.id);
-        if (!list.length && !dragging) return null; // puste sekcje ukrywamy (poza przeciąganiem)
+        if (!list.length) return null; // puste sekcje ukrywamy (do nich upuszczasz na pasku na dole)
         const isCollapsed = collapsed.includes(s.id);
         const doneCount = list.filter((t) => t.done).length;
         return (
@@ -333,12 +506,11 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
                 <IconRight size={20} />
               </button>
             </div>
-            {!list.length && <div className="drop-hint">Upuść tutaj</div>}
             {!isCollapsed && list.length > 0 && (
               <SortableContext items={list.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {list.map((t) => (
                   <DragRow key={t.id} id={t.id}>
-                    {(isDragging) => <TaskItem task={t} color={s.color} handle={{}} dragging={isDragging} onToggle={onToggle} onEdit={onEdit} onTime={onTime} />}
+                    {(isDragging) => <TaskItem task={t} color={s.color} handle={{}} dragging={isDragging} onToggle={toggle} onEdit={onEdit} onTime={onTime} />}
                   </DragRow>
                 ))}
               </SortableContext>
@@ -346,14 +518,39 @@ export function DayBoard({ view, tasks, sections, isToday, nowMin, collapsed, si
           </Zone>
         );
       })}
-      {/* Kafelek „w palcach” — leci nad wszystkimi sekcjami. */}
-      <DragOverlay modifiers={[verticalOnly]}>
+      {/* Kafelek „w palcach” — wygląda tak samo jak wiersz, z którego go podniesiono. */}
+      <DragOverlay modifiers={[verticalOnly]} dropAnimation={null}>
         {active ? (
-          <div className="drag-overlay">
-            <TaskItem task={active} color={sectionOf(active)?.color ?? '#ce82ff'} handle={{}} dragging onToggle={() => {}} onEdit={() => {}} />
-          </div>
+          active.time || view === 'time' ? (
+            <div className={`drag-overlay tl-row ${overDock ? 'is-over-dock' : ''}`} style={{ ['--sec' as string]: sectionOf(active)?.color }}>
+              <div className="tl-time">{active.time ? <b>{active.timeApprox ? '~' : ''}{active.time}</b> : <IconClock size={20} />}</div>
+              <div className="tl-dot" aria-hidden="true">{sectionOf(active)?.emoji}</div>
+              <div className="tl-task">
+                <TaskItem task={active} color={sectionOf(active)?.color ?? '#ce82ff'} big dragging onToggle={() => {}} onEdit={() => {}} />
+              </div>
+            </div>
+          ) : (
+            <div className={`drag-overlay ${overDock ? 'is-over-dock' : ''}`}>
+              <TaskItem task={active} color={sectionOf(active)?.color ?? '#ce82ff'} handle={{}} dragging onToggle={() => {}} onEdit={() => {}} />
+            </div>
+          )
         ) : null}
       </DragOverlay>
+
+      {/* Pasek na dole podczas przeciągania: przenieś do sekcji / ustaw godzinę / usuń godzinę. */}
+      {active && (
+        <div className="drag-dock" role="group" aria-label="Upuść, aby przenieść">
+          <div className="drag-dock-grid">
+            {!active.time && <DockTarget id={PLAN} emoji="🕒" label="Ustaw godzinę" />}
+            {active.time && view === 'time' && <DockTarget id={ANYTIME} emoji="🌈" label="Bez godziny" color="var(--purple)" />}
+            {sections
+              .filter((s) => s.id !== active.sectionId)
+              .map((s) => (
+                <DockTarget key={s.id} id={s.id} emoji={s.emoji} label={s.name} color={s.color} />
+              ))}
+          </div>
+        </div>
+      )}
     </DndContext>
   );
 }

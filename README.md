@@ -15,7 +15,7 @@ Bez konta, bez logowania i bez serwera — wszystkie dane zostają na Twoim tele
 - **Cofnij**: po odhaczeniu, przeniesieniu, zmianie godziny, edycji czy usunięciu na górze na 5 s pojawia się przycisk „↩️ Cofnij”.
 - Po zaplanowaniu dnia pole wpisu się chowa — wraca po stuknięciu **„✍️ Dopisz zadania”**.
 - W widoku „Godziny” zadania na osi czasu można przestawiać — zamieniają się godzinami.
-- **Przeciąganie kafelków**: przytrzymaj zadanie i przesuń je do innej sekcji (Pestka zapamięta to na przyszłość) albo na „Plan dnia”, aby nadać mu godzinę.
+- **Przeciąganie kafelków**: przytrzymaj zadanie, a w miejscu dolnego paska pojawią się sekcje oraz „🕒 Ustaw godzinę” / „🌈 Bez godziny” — upuść tam zadanie (Pestka zapamięta przeniesienie na przyszłość). Wszystkie przesunięcia są animowane i widać je od razu.
 - **Szybka godzina**: stuknij zegar przy zadaniu (albo godzinę na osi czasu) → „Rano / Południe / Po południu / Wieczorem” jednym stuknięciem lub siatka godzin i minut.
 - **Kalendarz** miesięczny z pierścieniem postępu przy każdym dniu (przesuń palcem w lewo/prawo, aby zmienić miesiąc).
 - **Lista zadań na dzień** podzielona na **sekcje** (Praca, Dom, Zdrowie, Na komputerze, Inne… — możesz je dodawać, zmieniać, usuwać, przestawiać, nadawać kolor i emoji).
